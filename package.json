@@ -1,6 +1,6 @@
 {
     "name": "phirepass-widgets",
-    "version": "0.0.7",
+    "version": "0.0.8",
     "description": "Phirepass widgets for the web application",
     "main": "dist/index.cjs.js",
     "module": "dist/index.js",
