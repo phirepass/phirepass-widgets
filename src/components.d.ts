@@ -22,6 +22,7 @@ export namespace Components {
           * @default "phirepass.io"
          */
         "serverHost": string;
+        "serverId"?: string;
         /**
           * @default 443
          */
@@ -67,6 +68,7 @@ declare namespace LocalJSX {
           * @default "phirepass.io"
          */
         "serverHost"?: string;
+        "serverId"?: string;
         /**
           * @default 443
          */
@@ -83,6 +85,7 @@ declare namespace LocalJSX {
         "allowInsecure": boolean;
         "heartbeatInterval": number;
         "nodeId": string;
+        "serverId": string;
     }
 
     interface IntrinsicElements {

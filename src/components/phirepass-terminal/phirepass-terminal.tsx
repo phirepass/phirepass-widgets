@@ -144,6 +144,14 @@ export class PhirepassTerminal {
         }
     }
 
+    @Prop()
+    serverId?: string;
+
+    @Watch('serverId')
+    onServerIdChange(_newValue?: string, _oldValue?: string) {
+        this.onNodeIdChange(this.nodeId, this.nodeId);
+    }
+
     createWebSocketEndpoint(): string {
         const protocol = this.allowInsecure ? 'ws' : 'wss';
 
@@ -217,7 +225,11 @@ export class PhirepassTerminal {
     }
 
     open_comms() {
-        this.channel = new PhirepassChannel(`${this.createWebSocketEndpoint()}/api/web/ws`, this.nodeId!);
+        if (this.serverId) {
+            this.channel = new PhirepassChannel(`${this.createWebSocketEndpoint()}/api/web/ws`, this.nodeId!, this.serverId!);
+        } else {
+            this.channel = new PhirepassChannel(`${this.createWebSocketEndpoint()}/api/web/ws`, this.nodeId!);
+        }
 
         this.channel.on_connection_open(() => {
             this.channel.start_heartbeat(this.heartbeatInterval <= 15_000 ? 30_000 : this.heartbeatInterval);
