@@ -93,7 +93,7 @@ describe('phirepass-terminal', () => {
             components: [PhirepassTerminal],
             html: `<phirepass-terminal></phirepass-terminal>`,
         });
-        expect(page.rootInstance.serverHost).toBe('phirepass.io');
+        expect(page.rootInstance.serverHost).toBe('phirepass.com');
         expect(page.rootInstance.serverPort).toBe(443);
     });
 
@@ -120,7 +120,7 @@ describe('phirepass-terminal', () => {
                 html: `<phirepass-terminal></phirepass-terminal>`,
             });
             const endpoint = page.rootInstance.createWebSocketEndpoint();
-            expect(endpoint).toBe('wss://phirepass.io');
+            expect(endpoint).toBe('wss://phirepass.com');
         });
 
         it('creates wss endpoint with custom secure host and port', async () => {
@@ -140,7 +140,7 @@ describe('phirepass-terminal', () => {
             });
             await page.waitForChanges();
             const endpoint = page.rootInstance.createWebSocketEndpoint();
-            expect(endpoint).toBe('ws://phirepass.io');
+            expect(endpoint).toBe('ws://phirepass.com');
         });
 
         it('creates ws endpoint with custom port when allowInsecure is true', async () => {
@@ -150,7 +150,7 @@ describe('phirepass-terminal', () => {
             });
             await page.waitForChanges();
             const endpoint = page.rootInstance.createWebSocketEndpoint();
-            expect(endpoint).toBe('ws://phirepass.io:8080');
+            expect(endpoint).toBe('ws://phirepass.com:8080');
         });
     });
 
