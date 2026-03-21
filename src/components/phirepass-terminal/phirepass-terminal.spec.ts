@@ -264,7 +264,7 @@ describe('phirepass-terminal', () => {
             component['passwordBuffer'] = 'pass';
 
             // Private method, but we can access through reflection
-            component['resetSessionState']();
+            component['reset_session_state']();
 
             expect(component.session_id).toBeUndefined();
             expect(component['usernameBuffer']).toBe('');
@@ -289,7 +289,7 @@ describe('phirepass-terminal', () => {
                 reset: jest.fn(),
             } as any;
 
-            component.cancelCredentialEntry();
+            component.cancel_credential_entry();
 
             expect(component['usernameBuffer']).toBe('');
             expect(component['passwordBuffer']).toBe('');
