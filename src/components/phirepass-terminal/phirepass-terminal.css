@@ -10,3 +10,11 @@
     width: inherit;
     height: inherit;
 }
+
+:host #ccc .terminal {
+    height: inherit;
+}
+
+:host #ccc .terminal .xterm-scrollable-element {
+    height: inherit;
+}

@@ -170,9 +170,13 @@ export class PhirepassTerminal {
     }
 
     async connectedCallback() {
+        console.log('PhirepassTerminal connected to DOM');
         await init();
+        console.log('PhirepassChannel module initialized');
         this.setup_terminal();
+        console.log('Terminal setup complete');
         this.open_comms();
+        console.log('Comms opened');
 
         if (!this.nodeId) {
             console.warn('Prop node_id is not set. Cannot connect to terminal.');
@@ -374,6 +378,7 @@ export class PhirepassTerminal {
             this.terminal.onData(this.handleTerminalData.bind(this));
             this.channel.connect();
             this.setupResizeObserver();
+            console.log('Terminal connected and ready');
         }
     }
 
