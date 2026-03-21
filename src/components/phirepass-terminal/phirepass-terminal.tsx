@@ -7,7 +7,7 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { ImageAddon, IImageAddonOptions } from '@xterm/addon-image';
 import init, { Channel as PhirepassChannel } from 'phirepass-channel';
-import { ProtocolMessage, ProtocolMessageError, ProtocolMessageWebError } from '../../common/protocol';
+import { ProtocolMessage, ProtocolMessageError, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError } from '../../common/protocol';
 
 enum InputMode {
     Username,
@@ -121,7 +121,10 @@ export class PhirepassTerminal {
     heartbeatInterval = 30_000;
 
     @Prop()
-    nodeId?: string;
+    nodeId: string;
+
+    @Prop()
+    token: string;
 
     @Watch('nodeId')
     onNodeIdChange(newValue?: string, _oldValue?: string) {
@@ -129,7 +132,7 @@ export class PhirepassTerminal {
         // console.log(`node_id changed from ${oldValue} to ${newValue}`);
 
         // Always clear local session state and reset terminal view
-        this.resetSessionState();
+        this.reset_session_state();
         this.terminal.reset();
 
         // Close existing comms if connected
@@ -232,8 +235,7 @@ export class PhirepassTerminal {
         }
 
         this.channel.on_connection_open(() => {
-            this.channel.start_heartbeat(this.heartbeatInterval <= 15_000 ? 30_000 : this.heartbeatInterval);
-            this.channel.open_ssh_tunnel(this.nodeId!);
+            this.channel.authenticate(this.token, this.nodeId);
         });
 
         this.channel.on_connection_close(() => {
@@ -253,6 +255,9 @@ export class PhirepassTerminal {
             switch (web.type) {
                 case "Error":
                     this.handle_error(web);
+                    break;
+                case "AuthSuccess":
+                    this.handleAuthSuccess(web);
                     break;
                 case "TunnelOpened":
                     this.session_id = web.sid;
@@ -326,31 +331,36 @@ export class PhirepassTerminal {
         this.channel.disconnect();
     }
 
-    cancelCredentialEntry() {
+    cancel_credential_entry() {
         this.inputMode = InputMode.Default;
-        this.usernameBuffer = "";
-        this.passwordBuffer = "";
+        this.clear_creds_buffer();
         this.terminal.writeln("Authentication cancelled.");
         this.terminal.reset();
     }
 
-    private resetSessionState() {
-        this.session_id = undefined;
-        this.inputMode = InputMode.Default;
+    private clear_creds_buffer() {
         this.usernameBuffer = "";
         this.passwordBuffer = "";
     }
 
+    private reset_session_state() {
+        this.session_id = undefined;
+        this.inputMode = InputMode.Default;
+        this.clear_creds_buffer();
+    }
+
+    handleAuthSuccess(_auth_: ProtocolMessageWebAuthSuccess) {
+        this.clear_creds_buffer();
+        this.channel.start_heartbeat(this.heartbeatInterval <= 15_000 ? 30_000 : this.heartbeatInterval);
+        this.channel.open_ssh_tunnel(this.nodeId);
+    }
+
     handleTunnelClosed() {
-        // Clear session state
         this.session_id = undefined;
         this.inputMode = InputMode.Default;
 
-        // Clear credential buffers for security
-        this.usernameBuffer = "";
-        this.passwordBuffer = "";
+        this.clear_creds_buffer();
 
-        // Reset terminal display
         this.terminal.reset();
         this.terminal.writeln("Connection closed.");
     }
@@ -405,7 +415,7 @@ export class PhirepassTerminal {
 
         if (data === "\u0003") {
             this.terminal.write("^C\r\n");
-            this.cancelCredentialEntry();
+            this.cancel_credential_entry();
             return;
         }
 
@@ -450,7 +460,7 @@ export class PhirepassTerminal {
 
         if (data === "\u0003") {
             this.terminal.write("^C\r\n");
-            this.cancelCredentialEntry();
+            this.cancel_credential_entry();
             return;
         }
 

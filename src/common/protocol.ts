@@ -7,6 +7,13 @@ export type ProtocolMessageWebError = {
     type: "Error";
 }
 
+export type ProtocolMessageWebAuthSuccess = {
+    cid: String,
+    version: String;
+    msg_id?: number;
+    type: "AuthSuccess";
+}
+
 export type ProtocolMessageWebTunnelOpened = {
     sid: number;
     msg_id?: number;
@@ -32,6 +39,7 @@ export type ProtocolMessage = {
     data: {
         web:
             | ProtocolMessageWebError
+            | ProtocolMessageWebAuthSuccess
             | ProtocolMessageWebTunnelOpened
             | ProtocolMessageWebTunnelData
             | ProtocolMessageWebTunnelClosed;
