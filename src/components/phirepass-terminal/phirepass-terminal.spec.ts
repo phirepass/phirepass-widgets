@@ -80,6 +80,24 @@ import { newSpecPage } from '@stencil/core/testing';
 import { PhirepassTerminal } from './phirepass-terminal';
 
 describe('phirepass-terminal', () => {
+    const originalResizeObserver = (globalThis as typeof globalThis & { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
+
+    beforeAll(() => {
+        (globalThis as typeof globalThis & { ResizeObserver: typeof ResizeObserver }).ResizeObserver = class {
+            observe = jest.fn();
+            unobserve = jest.fn();
+            disconnect = jest.fn();
+        } as unknown as typeof ResizeObserver;
+    });
+
+    afterAll(() => {
+        if (originalResizeObserver) {
+            (globalThis as typeof globalThis & { ResizeObserver: typeof ResizeObserver }).ResizeObserver = originalResizeObserver;
+            return;
+        }
+        delete (globalThis as typeof globalThis & { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
+    });
+
     it('renders with shadow DOM', async () => {
         const page = await newSpecPage({
             components: [PhirepassTerminal],
