@@ -1,4 +1,5 @@
 import { Component, Host, h, Element, Prop, Watch } from '@stencil/core';
+import { Event, EventEmitter } from '@stencil/core';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
 import { WebLinksAddon } from '@xterm/addon-web-links';
@@ -13,6 +14,12 @@ enum InputMode {
     Username,
     Password,
     Default,
+}
+
+enum ConnectionState {
+    Disconnected = "disconnected",
+    Connected = "connected",
+    Error = "error",
 }
 
 @Component({
@@ -159,6 +166,14 @@ export class PhirepassTerminal {
         this.onNodeIdChange(this.nodeId, this.nodeId);
     }
 
+    @Event({
+        eventName: 'connectionStateChanged',
+        composed: true,
+        cancelable: true,
+        bubbles: true,
+    })
+    connectionStateChanged: EventEmitter<[ConnectionState, unknown?]>;
+
     private create_web_socket_endpoint(): string {
         const protocol = this.allowInsecure ? 'ws' : 'wss';
 
@@ -264,15 +279,17 @@ export class PhirepassTerminal {
         }
 
         this.channel.on_connection_open(() => {
+            this.connectionStateChanged.emit([ConnectionState.Connected]);
             this.channel.authenticate(this.token, this.nodeId);
         });
 
         this.channel.on_connection_close(() => {
+            this.connectionStateChanged.emit([ConnectionState.Disconnected]);
             this.terminal.reset();
         });
 
         this.channel.on_connection_error((err: Error) => {
-            console.error('>> connection error:', err);
+            this.connectionStateChanged.emit([ConnectionState.Error, err]);
         });
 
         this.channel.on_connection_message((_raw: unknown) => {
