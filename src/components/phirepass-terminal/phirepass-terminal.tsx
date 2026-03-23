@@ -286,7 +286,7 @@ export class PhirepassTerminal {
                     this.handle_error(web);
                     break;
                 case "AuthSuccess":
-                    this.handleAuthSuccess(web);
+                    this.handle_auth_success(web);
                     break;
                 case "TunnelOpened":
                     this.session_id = web.sid;
@@ -294,7 +294,7 @@ export class PhirepassTerminal {
                     this.send_ssh_terminal_resize();
                     break;
                 case "TunnelClosed":
-                    this.handleTunnelClosed();
+                    this.handle_tunnel_closed();
                     break;
                 case "TunnelData":
                     this.terminal.write(new Uint8Array(web.data));
@@ -358,12 +358,12 @@ export class PhirepassTerminal {
         }
     }
 
-    close_comms() {
+    private close_comms() {
         this.channel.stop_heartbeat();
         this.channel.disconnect();
     }
 
-    cancel_credential_entry() {
+    private cancel_credential_entry() {
         this.inputMode = InputMode.Default;
         this.clear_creds_buffer();
         this.terminal.writeln("Authentication cancelled.");
@@ -381,13 +381,13 @@ export class PhirepassTerminal {
         this.clear_creds_buffer();
     }
 
-    handleAuthSuccess(_auth_: ProtocolMessageWebAuthSuccess) {
+    private handle_auth_success(_auth_: ProtocolMessageWebAuthSuccess) {
         this.clear_creds_buffer();
         this.channel.start_heartbeat(this.heartbeatInterval <= 15_000 ? 30_000 : this.heartbeatInterval);
         this.channel.open_ssh_tunnel(this.nodeId);
     }
 
-    handleTunnelClosed() {
+    private handle_tunnel_closed() {
         this.session_id = undefined;
         this.inputMode = InputMode.Default;
 
@@ -397,7 +397,7 @@ export class PhirepassTerminal {
         this.terminal.writeln("Connection closed.");
     }
 
-    connect() {
+    private connect() {
         const container = this.containerEl;
         console.log('Attempting to connect terminal to container:', container);
         if (container) {
@@ -405,16 +405,18 @@ export class PhirepassTerminal {
             console.log('Terminal opened in container');
             this.fitAddon.fit();
             this.terminal.focus();
-            this.terminal.onData(this.handleTerminalData.bind(this));
+            this.terminal.onData(this.handle_terminal_data.bind(this));
             this.channel.connect();
-            this.setupResizeObserver();
+            this.setup_resize_observer();
             this.connected = true;
             console.log('Terminal connected and ready');
         }
     }
 
-    setupResizeObserver() {
+    private setup_resize_observer() {
         this.resizeObserver = new ResizeObserver(() => {
+            console.log('Container resized, fitting terminal');
+
             if (this.resizeDebounceHandle) {
                 clearTimeout(this.resizeDebounceHandle);
             }
@@ -428,13 +430,13 @@ export class PhirepassTerminal {
         this.resizeObserver.observe(this.el);
     }
 
-    handleTerminalData(data: string) {
+    private handle_terminal_data(data: string) {
         switch (this.inputMode) {
             case InputMode.Username:
-                this.handleUsernameInput(data);
+                this.handle_username_input(data);
                 break;
             case InputMode.Password:
-                this.handlePasswordInput(data);
+                this.handle_password_input(data);
                 break;
             case InputMode.Default:
                 this.send_ssh_data(data);
@@ -442,10 +444,10 @@ export class PhirepassTerminal {
         }
     }
 
-    handleUsernameInput(data: string) {
+    private handle_username_input(data: string) {
         if (data === "\r" || data === "\n") {
             this.terminal.write("\r\n");
-            this.submitUsername();
+            this.submit_username();
             return;
         }
 
@@ -469,7 +471,7 @@ export class PhirepassTerminal {
         }
     }
 
-    submitUsername() {
+    private submit_username() {
         if (!this.channel.is_connected()) {
             return;
         }
@@ -487,10 +489,10 @@ export class PhirepassTerminal {
         this.channel.open_ssh_tunnel(this.nodeId, username);
     }
 
-    handlePasswordInput(data: string) {
+    private handle_password_input(data: string) {
         if (data === "\r" || data === "\n") {
             this.terminal.write("\r\n");
-            this.submitPassword();
+            this.submit_password();
             return;
         }
 
@@ -514,7 +516,7 @@ export class PhirepassTerminal {
         }
     }
 
-    submitPassword() {
+    private submit_password() {
         if (!this.channel.is_connected()) {
             return;
         }
