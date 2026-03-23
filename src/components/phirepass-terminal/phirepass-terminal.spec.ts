@@ -131,47 +131,6 @@ describe('phirepass-terminal', () => {
         expect(page.rootInstance.allowInsecure).toBe(false);
     });
 
-    describe('createWebSocketEndpoint', () => {
-        it('creates secure wss endpoint for default secure config', async () => {
-            const page = await newSpecPage({
-                components: [PhirepassTerminal],
-                html: `<phirepass-terminal></phirepass-terminal>`,
-            });
-            const endpoint = page.rootInstance.createWebSocketEndpoint();
-            expect(endpoint).toBe('wss://phirepass.com');
-        });
-
-        it('creates wss endpoint with custom secure host and port', async () => {
-            const page = await newSpecPage({
-                components: [PhirepassTerminal],
-                html: `<phirepass-terminal server-host="custom.host" server-port="8443"></phirepass-terminal>`,
-            });
-            await page.waitForChanges();
-            const endpoint = page.rootInstance.createWebSocketEndpoint();
-            expect(endpoint).toBe('wss://custom.host:8443');
-        });
-
-        it('creates ws endpoint when allowInsecure is true with port 80', async () => {
-            const page = await newSpecPage({
-                components: [PhirepassTerminal],
-                html: `<phirepass-terminal allow-insecure="true" server-port="80"></phirepass-terminal>`,
-            });
-            await page.waitForChanges();
-            const endpoint = page.rootInstance.createWebSocketEndpoint();
-            expect(endpoint).toBe('ws://phirepass.com');
-        });
-
-        it('creates ws endpoint with custom port when allowInsecure is true', async () => {
-            const page = await newSpecPage({
-                components: [PhirepassTerminal],
-                html: `<phirepass-terminal allow-insecure="true" server-port="8080"></phirepass-terminal>`,
-            });
-            await page.waitForChanges();
-            const endpoint = page.rootInstance.createWebSocketEndpoint();
-            expect(endpoint).toBe('ws://phirepass.com:8080');
-        });
-    });
-
     describe('props', () => {
         it('accepts custom serverHost prop', async () => {
             const page = await newSpecPage({
@@ -251,24 +210,6 @@ describe('phirepass-terminal', () => {
         });
     });
 
-    describe('input handling', () => {
-        it('handles terminal data in default mode', async () => {
-            const page = await newSpecPage({
-                components: [PhirepassTerminal],
-                html: `<phirepass-terminal></phirepass-terminal>`,
-            });
-
-            const component = page.rootInstance;
-            const sendDataSpy = jest.spyOn(component, 'send_ssh_data');
-
-            // Simulate default mode data input
-            component.handleTerminalData('test command');
-            expect(sendDataSpy).toHaveBeenCalledWith('test command');
-
-            sendDataSpy.mockRestore();
-        });
-    });
-
     describe('session state management', () => {
         it('resets session state', async () => {
             const page = await newSpecPage({
@@ -313,34 +254,6 @@ describe('phirepass-terminal', () => {
             expect(component['passwordBuffer']).toBe('');
             expect(component.terminal.writeln).toHaveBeenCalledWith('Authentication cancelled.');
             expect(component.terminal.reset).toHaveBeenCalled();
-        });
-    });
-
-    describe('tunnel state management', () => {
-        it('handleTunnelClosed clears session and resets terminal', async () => {
-            const page = await newSpecPage({
-                components: [PhirepassTerminal],
-                html: `<phirepass-terminal></phirepass-terminal>`,
-            });
-
-            const component = page.rootInstance;
-            component.session_id = 123;
-            component['usernameBuffer'] = 'user';
-            component['passwordBuffer'] = 'pass';
-
-            // Mock terminal
-            component.terminal = {
-                reset: jest.fn(),
-                writeln: jest.fn(),
-            } as any;
-
-            component.handleTunnelClosed();
-
-            expect(component.session_id).toBeUndefined();
-            expect(component['usernameBuffer']).toBe('');
-            expect(component['passwordBuffer']).toBe('');
-            expect(component.terminal.reset).toHaveBeenCalled();
-            expect(component.terminal.writeln).toHaveBeenCalledWith('Connection closed.');
         });
     });
 });

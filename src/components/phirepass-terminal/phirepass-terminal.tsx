@@ -159,7 +159,7 @@ export class PhirepassTerminal {
         this.onNodeIdChange(this.nodeId, this.nodeId);
     }
 
-    createWebSocketEndpoint(): string {
+    private create_web_socket_endpoint(): string {
         const protocol = this.allowInsecure ? 'ws' : 'wss';
 
         if (!this.allowInsecure && this.serverPort === 443) {
@@ -219,7 +219,7 @@ export class PhirepassTerminal {
         this.connect();
     }
 
-    setup_terminal() {
+    private setup_terminal() {
         this.terminal = new Terminal(this.terminalOptions);
 
         this.fitAddon = new FitAddon();
@@ -247,7 +247,7 @@ export class PhirepassTerminal {
         this.fitAddon.fit();
     }
 
-    destroy_terminal() {
+    private destroy_terminal() {
         if (this.terminal) {
             this.terminal.reset();
             if (typeof this.terminal.dispose === 'function') {
@@ -256,11 +256,11 @@ export class PhirepassTerminal {
         }
     }
 
-    open_comms() {
+    private open_comms() {
         if (this.serverId) {
-            this.channel = new PhirepassChannel(`${this.createWebSocketEndpoint()}/api/web/ws`, this.nodeId!, this.serverId!);
+            this.channel = new PhirepassChannel(`${this.create_web_socket_endpoint()}/api/web/ws`, this.nodeId!, this.serverId!);
         } else {
-            this.channel = new PhirepassChannel(`${this.createWebSocketEndpoint()}/api/web/ws`, this.nodeId!);
+            this.channel = new PhirepassChannel(`${this.create_web_socket_endpoint()}/api/web/ws`, this.nodeId!);
         }
 
         this.channel.on_connection_open(() => {
@@ -305,7 +305,7 @@ export class PhirepassTerminal {
         });
     }
 
-    send_ssh_terminal_resize() {
+    private send_ssh_terminal_resize() {
         if (!this.channel || !this.channel.is_connected() || !this.session_id) {
             console.warn('Cannot send terminal resize: channel not connected or session_id missing');
             return;
@@ -326,13 +326,13 @@ export class PhirepassTerminal {
         }
     }
 
-    send_ssh_data(data: string) {
+    private send_ssh_data(data: string) {
         if (this.channel.is_connected() && this.session_id) {
             this.channel.send_ssh_tunnel_data(this.nodeId!, this.session_id, data);
         }
     }
 
-    handle_error(error: ProtocolMessageWebError) {
+    private handle_error(error: ProtocolMessageWebError) {
         switch (error.kind) {
             case ProtocolMessageError.Generic:
                 this.terminal.reset();
