@@ -307,12 +307,14 @@ export class PhirepassTerminal {
 
     send_ssh_terminal_resize() {
         if (!this.channel || !this.channel.is_connected() || !this.session_id) {
+            console.warn('Cannot send terminal resize: channel not connected or session_id missing');
             return;
         }
 
         const cols = this.terminal?.cols ?? 0;
         const rows = this.terminal?.rows ?? 0;
         if (cols <= 0 || rows <= 0) {
+            console.warn('Cannot send terminal resize: invalid terminal dimensions (cols:', cols, 'rows:', rows, ') ');
             return;
         }
 
