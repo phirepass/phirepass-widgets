@@ -34,6 +34,10 @@ export namespace Components {
         "token": string;
     }
 }
+export interface PhirepassTerminalCustomEvent<T> extends CustomEvent<T> {
+    detail: T;
+    target: HTMLPhirepassTerminalElement;
+}
 declare global {
     interface HTMLPhirepassSftpClientElement extends Components.PhirepassSftpClient, HTMLStencilElement {
     }
@@ -41,7 +45,18 @@ declare global {
         prototype: HTMLPhirepassSftpClientElement;
         new (): HTMLPhirepassSftpClientElement;
     };
+    interface HTMLPhirepassTerminalElementEventMap {
+        "connectionStateChanged": [ConnectionState, unknown?];
+    }
     interface HTMLPhirepassTerminalElement extends Components.PhirepassTerminal, HTMLStencilElement {
+        addEventListener<K extends keyof HTMLPhirepassTerminalElementEventMap>(type: K, listener: (this: HTMLPhirepassTerminalElement, ev: PhirepassTerminalCustomEvent<HTMLPhirepassTerminalElementEventMap[K]>) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
+        removeEventListener<K extends keyof HTMLPhirepassTerminalElementEventMap>(type: K, listener: (this: HTMLPhirepassTerminalElement, ev: PhirepassTerminalCustomEvent<HTMLPhirepassTerminalElementEventMap[K]>) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
     }
     var HTMLPhirepassTerminalElement: {
         prototype: HTMLPhirepassTerminalElement;
@@ -65,6 +80,7 @@ declare namespace LocalJSX {
          */
         "heartbeatInterval"?: number;
         "nodeId"?: string;
+        "onConnectionStateChanged"?: (event: PhirepassTerminalCustomEvent<[ConnectionState, unknown?]>) => void;
         /**
           * @default "phirepass.com"
          */

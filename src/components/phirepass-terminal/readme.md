@@ -19,6 +19,13 @@
 | `token`             | `token`              |             | `string`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                            | `undefined`                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                                |
 
 
+## Events
+
+| Event                    | Description | Type                                       |
+| ------------------------ | ----------- | ------------------------------------------ |
+| `connectionStateChanged` |             | `CustomEvent<[ConnectionState, unknown?]>` |
+
+
 ----------------------------------------------
 
 *Built with [StencilJS](https://stenciljs.com/)*

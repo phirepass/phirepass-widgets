@@ -189,13 +189,9 @@ export class PhirepassTerminal {
     }
 
     async connectedCallback() {
-        console.log('PhirepassTerminal connected to DOM');
         await init();
-        console.log('PhirepassChannel module initialized');
         this.setup_terminal();
-        console.log('Terminal setup complete');
         this.open_comms();
-        console.log('Comms opened');
         this.runtimeReady = true;
 
         if (!this.nodeId) {
@@ -215,6 +211,7 @@ export class PhirepassTerminal {
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
         }
+
         this.connected = false;
         this.domReady = false;
         this.runtimeReady = false;
