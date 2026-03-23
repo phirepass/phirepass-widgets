@@ -8,7 +8,7 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { ImageAddon, IImageAddonOptions } from '@xterm/addon-image';
 import init, { Channel as PhirepassChannel } from 'phirepass-channel';
-import { ProtocolMessage, ProtocolMessageError, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError } from '../../common/protocol';
+import { ProtocolMessage, ProtocolMessageError, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
 
 enum InputMode {
     Username,
@@ -289,7 +289,7 @@ export class PhirepassTerminal {
             this.connectionStateChanged.emit([ConnectionState.Error, err]);
         });
 
-        this.channel.on_connection_message((_raw: unknown) => {
+        this.channel.on_connection_message((_raw_: unknown) => {
             // console.log('>> raw message received', raw);
         });
 
@@ -303,15 +303,13 @@ export class PhirepassTerminal {
                     this.handle_auth_success(web);
                     break;
                 case "TunnelOpened":
-                    this.session_id = web.sid;
-                    this.terminal.reset();
-                    this.send_ssh_terminal_resize();
+                    this.handle_tunnel_opened(web);
                     break;
                 case "TunnelClosed":
-                    this.handle_tunnel_closed();
+                    this.handle_tunnel_closed(web);
                     break;
                 case "TunnelData":
-                    this.terminal.write(new Uint8Array(web.data));
+                    this.handle_tunnel_data(web);
                     break;
                 default:
                     console.warn('Unknown protocol message type:', web);
@@ -401,7 +399,17 @@ export class PhirepassTerminal {
         this.channel.open_ssh_tunnel(this.nodeId);
     }
 
-    private handle_tunnel_closed() {
+    private handle_tunnel_opened(web: ProtocolMessageWebTunnelOpened) {
+        this.session_id = web.sid;
+        this.terminal.reset();
+        this.send_ssh_terminal_resize();
+    }
+
+    private handle_tunnel_data(web: ProtocolMessageWebTunnelData) {
+        this.terminal.write(new Uint8Array(web.data));
+    }
+
+    private handle_tunnel_closed(_web_: ProtocolMessageWebTunnelClosed) {
         this.session_id = undefined;
         this.inputMode = InputMode.Default;
 
