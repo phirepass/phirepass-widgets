@@ -380,6 +380,7 @@ export class PhirepassTerminal {
         this.clear_creds_buffer();
         this.terminal.writeln("Authentication cancelled.");
         this.terminal.reset();
+        this.close_comms();
     }
 
     private clear_creds_buffer() {
@@ -418,7 +419,7 @@ export class PhirepassTerminal {
         this.terminal.reset();
         this.terminal.writeln("Connection closed.");
 
-        this.channel.disconnect();
+        this.close_comms();
     }
 
     private connect() {
