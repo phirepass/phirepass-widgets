@@ -318,21 +318,44 @@ export class PhirepassTerminal {
     }
 
     private send_ssh_terminal_resize() {
-        if (!this.channel || !this.channel.is_connected() || !this.session_id) {
-            console.warn('Cannot send terminal resize: channel not connected or session_id missing');
+        if (!this.containerEl) {
+            console.warn('Cannot send terminal resize: container element not available');
+            return;
+        }
+
+        if (!this.nodeId) {
+            console.warn('Cannot send terminal resize: node_id is missing');
+            return;
+        }
+
+        if (!this.session_id) {
+            console.warn('Cannot send terminal resize: session_id is missing');
+            return;
+        }
+
+        if (!this.channel) {
+            console.warn('Cannot send terminal resize: channel is not initialized');
+            return;
+        }
+
+        if (!this.channel.is_connected()) {
+            console.warn('Cannot send terminal resize: channel not connected');
             return;
         }
 
         const cols = this.terminal?.cols ?? 0;
         const rows = this.terminal?.rows ?? 0;
+        const px_width = this.containerEl.clientWidth ?? 0;
+        const px_height = this.containerEl.clientHeight ?? 0;
+
         if (cols <= 0 || rows <= 0) {
             console.warn('Cannot send terminal resize: invalid terminal dimensions (cols:', cols, 'rows:', rows, ') ');
             return;
         }
 
         try {
-            console.log(`Sending terminal resize: cols=${cols}, rows=${rows}`);
-            this.channel.send_ssh_terminal_resize(this.nodeId!, this.session_id, cols, rows);
+            console.log(`Sending terminal resize: cols=${cols}, rows=${rows}, px_width=${px_width}, px_height=${px_height}`);
+            this.channel.send_ssh_terminal_resize(this.nodeId!, this.session_id, cols, rows, px_width, px_height);
         } catch (err) {
             console.error('Failed to send terminal resize:', err);
         }
