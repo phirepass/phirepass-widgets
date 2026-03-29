@@ -332,11 +332,6 @@ export class PhirepassTerminal {
             return;
         }
 
-        if (!this.session_id) {
-            console.warn('Cannot send terminal resize: session_id is missing');
-            return;
-        }
-
         if (!this.channel) {
             console.warn('Cannot send terminal resize: channel is not initialized');
             return;
@@ -344,6 +339,11 @@ export class PhirepassTerminal {
 
         if (!this.channel.is_connected()) {
             console.warn('Cannot send terminal resize: channel not connected');
+            return;
+        }
+
+        if (!this.session_id) {
+            console.warn('Cannot send terminal resize: session_id is missing');
             return;
         }
 
