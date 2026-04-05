@@ -68,6 +68,8 @@ declare global {
     }
 }
 declare namespace LocalJSX {
+    type OneOf<K extends string, PropT, AttrT = PropT> = { [P in K]: PropT } & { [P in `attr:${K}` | `prop:${K}`]?: never } | { [P in `attr:${K}`]: AttrT } & { [P in K | `prop:${K}`]?: never } | { [P in `prop:${K}`]: PropT } & { [P in K | `attr:${K}`]?: never };
+
     interface PhirepassSftpClient {
     }
     interface PhirepassTerminal {
@@ -79,7 +81,7 @@ declare namespace LocalJSX {
           * @default 30_000
          */
         "heartbeatInterval"?: number;
-        "nodeId"?: string;
+        "nodeId": string;
         "onConnectionStateChanged"?: (event: PhirepassTerminalCustomEvent<[ConnectionState, unknown?]>) => void;
         /**
           * @default "phirepass.com"
@@ -94,7 +96,7 @@ declare namespace LocalJSX {
           * @default {         // Terminal identification         termName: 'xterm-256color',          // Rendering         rendererType: 'canvas', // Better performance         allowTransparency: false,          fontFamily:             '"Berkeley Mono", "Fira Code", "SFMono-Regular", Menlo, monospace',         fontSize: 12,         // fontWeight: 'normal',         // fontWeightBold: 'bold',         letterSpacing: 0,         lineHeight: 1.0,          allowProposedApi: true, // needed for bracketed paste          // Cursor         cursorBlink: true,         // cursorStyle: 'block',         cursorWidth: 1,          // Colors         theme: {             background: "#0b1021",             foreground: "#e2e8f0",             cursor: "#67e8f9",         },          // Scrolling         scrollback: 10000,         fastScrollModifier: 'shift',         fastScrollSensitivity: 5,          // Behavior         bellStyle: 'sound', // or 'none' if you prefer         convertEol: false, // true to treat \n as \r\n         disableStdin: false,          // Selection         rightClickSelectsWord: true,          // Performance         drawBoldTextInBrightColors: true,         minimumContrastRatio: 1,          // Advanced         windowsMode: false, // Important for Linux         macOptionIsMeta: false,         altClickMovesCursor: true     }
          */
         "terminalOptions"?: { termName: string; rendererType: string; allowTransparency: boolean; fontFamily: string; fontSize: number; letterSpacing: number; lineHeight: number; allowProposedApi: boolean; cursorBlink: boolean; cursorWidth: number; theme: { background: string; foreground: string; cursor: string; }; scrollback: number; fastScrollModifier: string; fastScrollSensitivity: number; bellStyle: string; convertEol: boolean; disableStdin: boolean; rightClickSelectsWord: boolean; drawBoldTextInBrightColors: boolean; minimumContrastRatio: number; windowsMode: boolean; macOptionIsMeta: boolean; altClickMovesCursor: boolean; };
-        "token"?: string;
+        "token": string;
     }
 
     interface PhirepassTerminalAttributes {
@@ -109,7 +111,7 @@ declare namespace LocalJSX {
 
     interface IntrinsicElements {
         "phirepass-sftp-client": PhirepassSftpClient;
-        "phirepass-terminal": Omit<PhirepassTerminal, keyof PhirepassTerminalAttributes> & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes]?: PhirepassTerminal[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `attr:${K}`]?: PhirepassTerminalAttributes[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `prop:${K}`]?: PhirepassTerminal[K] };
+        "phirepass-terminal": Omit<PhirepassTerminal, keyof PhirepassTerminalAttributes> & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes]?: PhirepassTerminal[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `attr:${K}`]?: PhirepassTerminalAttributes[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `prop:${K}`]?: PhirepassTerminal[K] } & OneOf<"nodeId", PhirepassTerminal["nodeId"], PhirepassTerminalAttributes["nodeId"]> & OneOf<"token", PhirepassTerminal["token"], PhirepassTerminalAttributes["token"]>;
     }
 }
 export { LocalJSX as JSX };

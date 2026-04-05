@@ -58,6 +58,12 @@ jest.mock('phirepass-channel', () => {
     return {
         __esModule: true,
         default: jest.fn(),
+        ErrorType: {
+            Generic: 0,
+            Authentication: 10,
+            RequiresUsername: 100,
+            RequiresPassword: 110,
+        },
         Channel: jest.fn(function () {
             this.is_connected = jest.fn(() => false);
             this.connect = jest.fn();
@@ -78,6 +84,7 @@ jest.mock('phirepass-channel', () => {
 
 import { newSpecPage } from '@stencil/core/testing';
 import { PhirepassTerminal } from './phirepass-terminal';
+import { ProtocolMessageError } from '../../common/protocol';
 
 describe('phirepass-terminal', () => {
     const originalResizeObserver = (globalThis as typeof globalThis & { ResizeObserver?: typeof ResizeObserver }).ResizeObserver;
@@ -254,6 +261,32 @@ describe('phirepass-terminal', () => {
             expect(component['passwordBuffer']).toBe('');
             expect(component.terminal.writeln).toHaveBeenCalledWith('Authentication cancelled.');
             expect(component.terminal.reset).toHaveBeenCalled();
+        });
+    });
+
+    describe('error handling', () => {
+        it('prints authentication failure messages in the terminal', async () => {
+            const page = await newSpecPage({
+                components: [PhirepassTerminal],
+                html: `<phirepass-terminal></phirepass-terminal>`,
+            });
+
+            const component = page.rootInstance;
+            component.terminal = {
+                reset: jest.fn(),
+                write: jest.fn(),
+                focus: jest.fn(),
+            } as any;
+
+            component['handle_error']({
+                kind: ProtocolMessageError.Authentication,
+                message: 'SSH authentication failed',
+                type: 'Error',
+            } as any);
+
+            expect(component.terminal.reset).toHaveBeenCalled();
+            expect(component.terminal.write).toHaveBeenCalledWith('SSH authentication failed\r\n');
+            expect(component.terminal.focus).toHaveBeenCalled();
         });
     });
 });

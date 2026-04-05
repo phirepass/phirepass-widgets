@@ -28,21 +28,21 @@ enum ConnectionState {
     shadow: true,
 })
 export class PhirepassTerminal {
-    private terminal: Terminal;
-    private fitAddon: FitAddon;
+    private terminal!: Terminal;
+    private fitAddon!: FitAddon;
     private webLinksAddon?: WebLinksAddon;
     private searchAddon?: SearchAddon;
     private webglAddon?: WebglAddon;
     private serializeAddon?: SerializeAddon;
     private imageAddon?: ImageAddon;
 
-    private channel: PhirepassChannel;
+    private channel!: PhirepassChannel;
     private containerEl?: HTMLDivElement;
     private domReady = false;
     private runtimeReady = false;
     private connected = false;
     private inputMode: InputMode = InputMode.Default;
-    private resizeObserver: ResizeObserver;
+    private resizeObserver!: ResizeObserver;
     private resizeDebounceHandle?: ReturnType<typeof setTimeout> | number;
 
     private session_id?: number;
@@ -63,7 +63,7 @@ export class PhirepassTerminal {
     }
 
     @Element()
-    el: HTMLElement;
+    el!: HTMLElement;
 
     @Prop()
     terminalOptions = {
@@ -132,10 +132,10 @@ export class PhirepassTerminal {
     heartbeatInterval = 30_000;
 
     @Prop()
-    nodeId: string;
+    nodeId!: string;
 
     @Prop()
-    token: string;
+    token!: string;
 
     @Watch('nodeId')
     onNodeIdChange(newValue?: string, _oldValue?: string) {
@@ -172,7 +172,7 @@ export class PhirepassTerminal {
         cancelable: true,
         bubbles: true,
     })
-    connectionStateChanged: EventEmitter<[ConnectionState, unknown?]>;
+    connectionStateChanged!: EventEmitter<[ConnectionState, unknown?]>;
 
     private create_web_socket_endpoint(): string {
         const protocol = this.allowInsecure ? 'ws' : 'wss';
@@ -376,9 +376,12 @@ export class PhirepassTerminal {
     private handle_error(error: ProtocolMessageWebError) {
         switch (error.kind) {
             case ProtocolMessageError.Generic:
+            case ProtocolMessageError.Authentication:
                 this.terminal.reset();
                 this.terminal.write(error.message + "\r\n");
                 this.terminal.focus();
+                this.usernameBuffer = "";
+                this.passwordBuffer = "";
                 break;
             case ProtocolMessageError.RequiresUsername:
                 this.terminal.reset();
