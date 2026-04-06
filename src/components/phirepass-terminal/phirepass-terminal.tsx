@@ -208,6 +208,11 @@ export class PhirepassTerminal {
     }
 
     async disconnectedCallback() {
+        if (this.resizeDebounceHandle) {
+            clearTimeout(this.resizeDebounceHandle);
+            this.resizeDebounceHandle = undefined;
+        }
+
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
         }
@@ -217,6 +222,22 @@ export class PhirepassTerminal {
         this.runtimeReady = false;
         this.close_comms();
         this.destroy_terminal();
+    }
+
+    private is_terminal_open(): boolean {
+        return Boolean(this.connected && this.containerEl && (this.terminal as Terminal & { element?: HTMLElement }).element);
+    }
+
+    private fit_terminal_safely() {
+        if (!this.fitAddon || !this.is_terminal_open()) {
+            return;
+        }
+
+        try {
+            this.fitAddon.fit();
+        } catch (err) {
+            console.warn('Skipping terminal fit before renderer is ready:', err);
+        }
     }
 
     private try_connect() {
@@ -347,7 +368,7 @@ export class PhirepassTerminal {
             return;
         }
 
-        this.fitAddon.fit();
+        this.fit_terminal_safely();
 
         const cols = this.terminal?.cols ?? 0;
         const rows = this.terminal?.rows ?? 0;
@@ -435,7 +456,7 @@ export class PhirepassTerminal {
     private handle_tunnel_opened(web: ProtocolMessageWebTunnelOpened) {
         this.session_id = web.sid;
         this.terminal.reset();
-        this.fitAddon.fit();
+        this.fit_terminal_safely();
         this.send_ssh_terminal_resize();
     }
 
@@ -461,12 +482,12 @@ export class PhirepassTerminal {
         if (container) {
             this.terminal.open(container);
             console.log('Terminal opened in container');
-            this.fitAddon.fit();
+            this.connected = true;
+            this.fit_terminal_safely();
             this.terminal.focus();
             this.terminal.onData(this.handle_terminal_data.bind(this));
             this.channel.connect();
             this.setup_resize_observer();
-            this.connected = true;
             console.log('Terminal connected and ready');
         }
     }
@@ -480,7 +501,7 @@ export class PhirepassTerminal {
             }
 
             this.resizeDebounceHandle = setTimeout(() => {
-                this.fitAddon.fit();
+                this.fit_terminal_safely();
                 this.send_ssh_terminal_resize();
             }, 100);
         });
