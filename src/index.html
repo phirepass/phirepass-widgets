@@ -170,9 +170,13 @@
       <phirepass-sftp-client> </phirepass-sftp-client>
       <script>
         const client = document.querySelector('phirepass-sftp-client');
-        console.log(client);
-        client.addEventListener('maximized', event => {
-            console.log('maximized event received', event.detail);
+
+        client.addEventListener('maximize', event => {
+            if (event.detail) {
+                client.maximize();
+            } else {
+                client.minimize();
+            }
         });
       </script>
     </div>

@@ -11,10 +11,16 @@ export namespace Components {
           * @default 'Client'
          */
         "description": string;
+        "maximize": () => Promise<void>;
+        "minimize": () => Promise<void>;
         /**
           * @default 'SFTP'
          */
         "name": string;
+        /**
+          * @default false
+         */
+        "showLoginScreen": boolean;
     }
     interface PhirepassTerminal {
         /**
@@ -52,7 +58,7 @@ export interface PhirepassTerminalCustomEvent<T> extends CustomEvent<T> {
 }
 declare global {
     interface HTMLPhirepassSftpClientElementEventMap {
-        "maximized": any;
+        "maximize": any;
     }
     interface HTMLPhirepassSftpClientElement extends Components.PhirepassSftpClient, HTMLStencilElement {
         addEventListener<K extends keyof HTMLPhirepassSftpClientElementEventMap>(type: K, listener: (this: HTMLPhirepassSftpClientElement, ev: PhirepassSftpClientCustomEvent<HTMLPhirepassSftpClientElementEventMap[K]>) => any, options?: boolean | AddEventListenerOptions): void;
@@ -102,7 +108,11 @@ declare namespace LocalJSX {
           * @default 'SFTP'
          */
         "name"?: string;
-        "onMaximized"?: (event: PhirepassSftpClientCustomEvent<any>) => void;
+        "onMaximize"?: (event: PhirepassSftpClientCustomEvent<any>) => void;
+        /**
+          * @default false
+         */
+        "showLoginScreen"?: boolean;
     }
     interface PhirepassTerminal {
         /**
@@ -134,6 +144,7 @@ declare namespace LocalJSX {
     interface PhirepassSftpClientAttributes {
         "name": string;
         "description": string;
+        "showLoginScreen": boolean;
     }
     interface PhirepassTerminalAttributes {
         "serverHost": string;
