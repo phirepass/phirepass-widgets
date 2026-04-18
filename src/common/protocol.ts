@@ -46,4 +46,24 @@ export type ProtocolMessage = {
     }
 }
 
+export enum ProtocolMessageType {
+    Error = "Error",
+    AuthSuccess = "AuthSuccess",
+    TunnelOpened = "TunnelOpened",
+    TunnelClosed = "TunnelClosed",
+    TunnelData = "TunnelData",
+}
+
+export enum InputMode {
+    Username,
+    Password,
+    Default,
+}
+
+export enum ConnectionState {
+    Disconnected = "disconnected",
+    Connected = "connected",
+    Error = "error",
+}
+
 export { ErrorType as ProtocolMessageError };

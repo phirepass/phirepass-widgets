@@ -173,7 +173,6 @@
           const client = document.querySelector('phirepass-sftp-client');
           await customElements.whenDefined('phirepass-sftp-client');
           await client.componentOnReady?.();
-
           client.addEventListener('maximize', async event => {
             if (event.detail) {
               client.maximize();
@@ -181,8 +180,6 @@
               client.minimize();
             }
           });
-
-          client.showLogin(true, true);
         })();
       </script>
     </div>

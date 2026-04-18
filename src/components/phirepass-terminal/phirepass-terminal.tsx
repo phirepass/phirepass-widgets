@@ -8,19 +8,7 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { ImageAddon, IImageAddonOptions } from '@xterm/addon-image';
 import init, { Channel as PhirepassChannel } from 'phirepass-channel';
-import { ProtocolMessage, ProtocolMessageError, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
-
-enum InputMode {
-    Username,
-    Password,
-    Default,
-}
-
-enum ConnectionState {
-    Disconnected = "disconnected",
-    Connected = "connected",
-    Error = "error",
-}
+import { ConnectionState, InputMode, ProtocolMessage, ProtocolMessageError, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
 
 @Component({
     tag: 'phirepass-terminal',
@@ -321,19 +309,19 @@ export class PhirepassTerminal {
         this.channel.on_protocol_message((msg: ProtocolMessage) => {
             const { web } = msg.data;
             switch (web.type) {
-                case "Error":
+                case ProtocolMessageType.Error:
                     this.handle_error(web);
                     break;
-                case "AuthSuccess":
+                case ProtocolMessageType.AuthSuccess:
                     this.handle_auth_success(web);
                     break;
-                case "TunnelOpened":
+                case ProtocolMessageType.TunnelOpened:
                     this.handle_tunnel_opened(web);
                     break;
-                case "TunnelClosed":
+                case ProtocolMessageType.TunnelClosed:
                     this.handle_tunnel_closed(web);
                     break;
-                case "TunnelData":
+                case ProtocolMessageType.TunnelData:
                     this.handle_tunnel_data(web);
                     break;
                 default:

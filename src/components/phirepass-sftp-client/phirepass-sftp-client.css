@@ -123,6 +123,13 @@
       background: hsl(var(--card));
       width: 200px;
       position: relative;
+      background-color: rgba(21, 24, 30, 0.95);
+      border: 1px solid hsl(var(--border));
+      padding: 20px;
+      box-shadow:
+        rgba(0, 0, 0, 0) 0px 0px 0px 0px,
+        rgba(0, 0, 0, 0) 0px 0px 0px 0px,
+        rgba(0, 0, 0, 0.5) 0px 25px 50px -12px;
     }
   }
 }

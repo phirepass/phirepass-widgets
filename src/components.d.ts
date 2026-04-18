@@ -5,19 +5,43 @@
  * It contains typing information for all components that exist in this project.
  */
 import { HTMLStencilElement, JSXBase } from "@stencil/core/internal";
+import { ConnectionState } from "./common/protocol";
+export { ConnectionState } from "./common/protocol";
 export namespace Components {
     interface PhirepassSftpClient {
+        /**
+          * @default false
+         */
+        "allowInsecure": boolean;
         /**
           * @default 'Client'
          */
         "description": string;
+        /**
+          * @default 30_000
+         */
+        "heartbeatInterval": number;
+        /**
+          * @default false
+         */
+        "hideHeader": boolean;
         "maximize": () => Promise<void>;
         "minimize": () => Promise<void>;
         /**
           * @default 'SFTP'
          */
         "name": string;
-        "showLogin": (username?: boolean, password?: boolean) => Promise<void>;
+        "nodeId": string;
+        /**
+          * @default "phirepass.com"
+         */
+        "serverHost": string;
+        "serverId"?: string;
+        /**
+          * @default 443
+         */
+        "serverPort": number;
+        "token": string;
     }
     interface PhirepassTerminal {
         /**
@@ -56,6 +80,7 @@ export interface PhirepassTerminalCustomEvent<T> extends CustomEvent<T> {
 declare global {
     interface HTMLPhirepassSftpClientElementEventMap {
         "maximize": any;
+        "connectionStateChanged": [ConnectionState, unknown?];
     }
     interface HTMLPhirepassSftpClientElement extends Components.PhirepassSftpClient, HTMLStencilElement {
         addEventListener<K extends keyof HTMLPhirepassSftpClientElementEventMap>(type: K, listener: (this: HTMLPhirepassSftpClientElement, ev: PhirepassSftpClientCustomEvent<HTMLPhirepassSftpClientElementEventMap[K]>) => any, options?: boolean | AddEventListenerOptions): void;
@@ -98,14 +123,38 @@ declare namespace LocalJSX {
 
     interface PhirepassSftpClient {
         /**
+          * @default false
+         */
+        "allowInsecure"?: boolean;
+        /**
           * @default 'Client'
          */
         "description"?: string;
         /**
+          * @default 30_000
+         */
+        "heartbeatInterval"?: number;
+        /**
+          * @default false
+         */
+        "hideHeader"?: boolean;
+        /**
           * @default 'SFTP'
          */
         "name"?: string;
+        "nodeId": string;
+        "onConnectionStateChanged"?: (event: PhirepassSftpClientCustomEvent<[ConnectionState, unknown?]>) => void;
         "onMaximize"?: (event: PhirepassSftpClientCustomEvent<any>) => void;
+        /**
+          * @default "phirepass.com"
+         */
+        "serverHost"?: string;
+        "serverId"?: string;
+        /**
+          * @default 443
+         */
+        "serverPort"?: number;
+        "token": string;
     }
     interface PhirepassTerminal {
         /**
@@ -137,6 +186,14 @@ declare namespace LocalJSX {
     interface PhirepassSftpClientAttributes {
         "name": string;
         "description": string;
+        "hideHeader": boolean;
+        "serverHost": string;
+        "serverPort": number;
+        "allowInsecure": boolean;
+        "heartbeatInterval": number;
+        "nodeId": string;
+        "token": string;
+        "serverId": string;
     }
     interface PhirepassTerminalAttributes {
         "serverHost": string;
@@ -149,7 +206,7 @@ declare namespace LocalJSX {
     }
 
     interface IntrinsicElements {
-        "phirepass-sftp-client": Omit<PhirepassSftpClient, keyof PhirepassSftpClientAttributes> & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes]?: PhirepassSftpClient[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `attr:${K}`]?: PhirepassSftpClientAttributes[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `prop:${K}`]?: PhirepassSftpClient[K] };
+        "phirepass-sftp-client": Omit<PhirepassSftpClient, keyof PhirepassSftpClientAttributes> & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes]?: PhirepassSftpClient[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `attr:${K}`]?: PhirepassSftpClientAttributes[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `prop:${K}`]?: PhirepassSftpClient[K] } & OneOf<"nodeId", PhirepassSftpClient["nodeId"], PhirepassSftpClientAttributes["nodeId"]> & OneOf<"token", PhirepassSftpClient["token"], PhirepassSftpClientAttributes["token"]>;
         "phirepass-terminal": Omit<PhirepassTerminal, keyof PhirepassTerminalAttributes> & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes]?: PhirepassTerminal[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `attr:${K}`]?: PhirepassTerminalAttributes[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `prop:${K}`]?: PhirepassTerminal[K] } & OneOf<"nodeId", PhirepassTerminal["nodeId"], PhirepassTerminalAttributes["nodeId"]> & OneOf<"token", PhirepassTerminal["token"], PhirepassTerminalAttributes["token"]>;
     }
 }
