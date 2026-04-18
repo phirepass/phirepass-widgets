@@ -52,7 +52,7 @@ export interface PhirepassTerminalCustomEvent<T> extends CustomEvent<T> {
 }
 declare global {
     interface HTMLPhirepassSftpClientElementEventMap {
-        "maximize": any;
+        "maximized": any;
     }
     interface HTMLPhirepassSftpClientElement extends Components.PhirepassSftpClient, HTMLStencilElement {
         addEventListener<K extends keyof HTMLPhirepassSftpClientElementEventMap>(type: K, listener: (this: HTMLPhirepassSftpClientElement, ev: PhirepassSftpClientCustomEvent<HTMLPhirepassSftpClientElementEventMap[K]>) => any, options?: boolean | AddEventListenerOptions): void;
@@ -102,7 +102,7 @@ declare namespace LocalJSX {
           * @default 'SFTP'
          */
         "name"?: string;
-        "onMaximize"?: (event: PhirepassSftpClientCustomEvent<any>) => void;
+        "onMaximized"?: (event: PhirepassSftpClientCustomEvent<any>) => void;
     }
     interface PhirepassTerminal {
         /**

@@ -1,4 +1,4 @@
-import { Component, Host, Prop, State, h } from '@stencil/core';
+import { Component, Host, Method, Prop, State, h } from '@stencil/core';
 import { Event, EventEmitter } from '@stencil/core';
 
 import svg from './phirepass-sftp-client.logo.svg';
@@ -23,23 +23,24 @@ export class PhirepassSftpClient {
     max = false;
 
     @Event({
-        eventName: 'maximize',
+        eventName: 'maximized',
         composed: true,
         cancelable: true,
         bubbles: true,
     })
     maximize: EventEmitter<boolean> | undefined;
 
-    private toggle_max() {
+    private toggleMax() {
         this.max = !this.max;
         this.maximize?.emit(this.max);
-        console.log('doen', this.max);
     }
 
     render() {
-        const klass = this.max ? "default" : "max";
         return (
-            <Host class={klass}>
+            <Host class={{
+                'default': !this.max,
+                'max': this.max,
+            }}>
                 <header>
                     <section class="title">
                         <img src={svg} alt="SFTP Client" />
@@ -49,7 +50,7 @@ export class PhirepassSftpClient {
                         </div>
                     </section>
                     <section class="actions">
-                        <div class="action" onClick={this.toggle_max}>
+                        <div class="action" onClick={() => this.toggleMax()}>
                             <img src={max} alt="Maximize" />
                         </div>
                     </section>
