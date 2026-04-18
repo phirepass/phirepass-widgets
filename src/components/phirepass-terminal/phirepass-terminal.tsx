@@ -392,8 +392,9 @@ export class PhirepassTerminal {
                 this.usernameBuffer = "";
                 this.passwordBuffer = "";
                 break;
-            case ProtocolMessageError.RequiresUsername:
             case ProtocolMessageError.RequiresUsernamePassword:
+                console.log('Server requires both username and password. Prompting for username first.');
+            case ProtocolMessageError.RequiresUsername:
                 this.terminal.reset();
                 this.inputMode = InputMode.Username;
                 this.usernameBuffer = "";
