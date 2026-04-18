@@ -4,7 +4,7 @@ import init, { Channel as PhirepassChannel } from 'phirepass-channel';
 
 import svg from './phirepass-sftp-client.logo.svg';
 import max from './phirepass-sftp-client.max.svg';
-import { ConnectionState, InputMode, ProtocolMessage, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
+import { ConnectionState, ProtocolMessage, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
 
 // https://sweet-sftp-view.lovable.app/
 
@@ -18,11 +18,11 @@ export class PhirepassSftpClient {
     private domReady = false;
     private runtimeReady = false;
     private connected = false;
-    private inputMode: InputMode = InputMode.Default;
+    // private inputMode: InputMode = InputMode.Default;
 
-    private session_id?: number;
-    private usernameBuffer = "";
-    private passwordBuffer = "";
+    // private session_id?: number;
+    // private usernameBuffer = "";
+    // private passwordBuffer = "";
 
     @Prop()
     name = 'SFTP';
@@ -207,19 +207,32 @@ export class PhirepassSftpClient {
     }
 
     private handle_auth_success(_auth_: ProtocolMessageWebAuthSuccess) {
-        //
+        this.clear_creds_buffer();
+        this.channel.start_heartbeat(this.heartbeatInterval <= 15_000 ? 30_000 : this.heartbeatInterval);
+        this.channel.open_sftp_tunnel(this.nodeId);
     }
 
     private handle_tunnel_opened(_web_: ProtocolMessageWebTunnelOpened) {
-        //
+        // this.session_id = web.sid;
+        // this.terminal.reset();
+        // this.fit_terminal_safely();
+        // this.send_ssh_terminal_resize();
     }
 
     private handle_tunnel_data(_web_: ProtocolMessageWebTunnelData) {
-        //
+        // TODO
     }
 
     private handle_tunnel_closed(_web_: ProtocolMessageWebTunnelClosed) {
-        //
+        // this.session_id = undefined;
+        // this.inputMode = InputMode.Default;
+
+        this.clear_creds_buffer();
+
+        // this.terminal.reset();
+        // this.terminal.writeln("Connection closed.");
+
+        this.close_comms();
     }
 
     private open_comms() {
@@ -277,13 +290,13 @@ export class PhirepassSftpClient {
     }
 
     private clear_creds_buffer() {
-        this.usernameBuffer = "";
-        this.passwordBuffer = "";
+        // this.usernameBuffer = "";
+        // this.passwordBuffer = "";
     }
 
     private reset_session_state() {
-        this.session_id = undefined;
-        this.inputMode = InputMode.Default;
+        // this.session_id = undefined;
+        // this.inputMode = InputMode.Default;
         this.clear_creds_buffer();
     }
 

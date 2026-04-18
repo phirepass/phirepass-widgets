@@ -393,6 +393,7 @@ export class PhirepassTerminal {
                 this.passwordBuffer = "";
                 break;
             case ProtocolMessageError.RequiresUsername:
+            case ProtocolMessageError.RequiresUsernamePassword:
                 this.terminal.reset();
                 this.inputMode = InputMode.Username;
                 this.usernameBuffer = "";
