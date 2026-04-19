@@ -33,11 +33,35 @@ export type ProtocolMessageWebTunnelData = {
     type: 'TunnelData';
 };
 
+export type SFTPListItem = {
+    name: string;
+    path: string;
+    kind: 'Folder' | 'File';
+    items: Array<SFTPListItem>;
+    attributes: {
+        size: number;
+    };
+};
+
+export type ProtocolMessageWebSFTPListItems = {
+    path: string;
+    sid: number;
+    dir: SFTPListItem;
+    msg_id?: number;
+    type: 'SFTPListItems';
+};
+
 export type ProtocolMessage = {
     version: number;
     encoding: 'MessagePack' | 'JSON';
     data: {
-        web: ProtocolMessageWebError | ProtocolMessageWebAuthSuccess | ProtocolMessageWebTunnelOpened | ProtocolMessageWebTunnelData | ProtocolMessageWebTunnelClosed;
+        web:
+            | ProtocolMessageWebError
+            | ProtocolMessageWebAuthSuccess
+            | ProtocolMessageWebTunnelOpened
+            | ProtocolMessageWebTunnelData
+            | ProtocolMessageWebTunnelClosed
+            | ProtocolMessageWebSFTPListItems;
     };
 };
 
@@ -47,6 +71,7 @@ export enum ProtocolMessageType {
     TunnelOpened = 'TunnelOpened',
     TunnelClosed = 'TunnelClosed',
     TunnelData = 'TunnelData',
+    SFTPListItems = 'SFTPListItems',
 }
 
 export enum InputMode {

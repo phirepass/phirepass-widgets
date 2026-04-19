@@ -4,7 +4,7 @@ import init, { Channel as PhirepassChannel } from 'phirepass-channel';
 
 import svg from './phirepass-sftp-client.logo.svg';
 import max from './phirepass-sftp-client.max.svg';
-import { ConnectionState, ProtocolMessage, ProtocolMessageError, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
+import { ConnectionState, ProtocolMessage, ProtocolMessageError, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebSFTPListItems, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
 
 // https://sweet-sftp-view.lovable.app/
 
@@ -248,14 +248,18 @@ export class PhirepassSftpClient {
 
     private handle_tunnel_opened(web: ProtocolMessageWebTunnelOpened) {
         this.session_id = web.sid;
-        console.log('Tunnel opened with session ID:', this.session_id);
         // this.terminal.reset();
         // this.fit_terminal_safely();
         // this.send_ssh_terminal_resize();
+        this.channel.send_sftp_list_data(this.nodeId, this.session_id!, '.');
     }
 
-    private handle_tunnel_data(_web_: ProtocolMessageWebTunnelData) {
-        // TODO
+    private handle_sftp_list_items(web: ProtocolMessageWebSFTPListItems) {
+        console.log('received sftp list items:', web);
+    }
+
+    private handle_tunnel_data(web: ProtocolMessageWebTunnelData) {
+        console.log('received tunnel data:', web);
     }
 
     private handle_tunnel_closed(_web_: ProtocolMessageWebTunnelClosed) {
@@ -313,8 +317,11 @@ export class PhirepassSftpClient {
                 case ProtocolMessageType.TunnelData:
                     this.handle_tunnel_data(web);
                     break;
+                case ProtocolMessageType.SFTPListItems:
+                    this.handle_sftp_list_items(web);
+                    break;
                 default:
-                    console.warn('Unknown protocol message type:', web);
+                    console.warn('Unhandled protocol message type:', web);
             }
         });
     }
