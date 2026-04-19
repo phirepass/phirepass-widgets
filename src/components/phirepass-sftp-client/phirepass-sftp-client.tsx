@@ -28,6 +28,7 @@ export class PhirepassSftpClient {
     private uploadInputEl?: HTMLInputElement;
     private uploadProgressHandle?: number;
     private downloadProgressHandle?: number;
+    private deleteLoadingTimeout?: number;
     // private inputMode: InputMode = InputMode.Default;
 
     private session_id?: number;
@@ -186,6 +187,15 @@ export class PhirepassSftpClient {
     @State()
     download_finished = false;
 
+    @State()
+    show_delete_modal = false;
+
+    @State()
+    delete_file_name = '';
+
+    @State()
+    delete_loading = false;
+
     private toggle_max() {
         this.maximizeEvent?.emit(!this.max);
     }
@@ -224,6 +234,7 @@ export class PhirepassSftpClient {
         this.runtimeReady = false;
         this.clear_upload_progress();
         this.clear_download_progress();
+        this.clear_delete_loading_timeout();
         this.close_comms();
         // this.destroy_terminal();
     }
@@ -239,6 +250,13 @@ export class PhirepassSftpClient {
         if (this.downloadProgressHandle !== undefined) {
             window.clearInterval(this.downloadProgressHandle);
             this.downloadProgressHandle = undefined;
+        }
+    }
+
+    private clear_delete_loading_timeout() {
+        if (this.deleteLoadingTimeout !== undefined) {
+            window.clearTimeout(this.deleteLoadingTimeout);
+            this.deleteLoadingTimeout = undefined;
         }
     }
 
@@ -505,11 +523,42 @@ export class PhirepassSftpClient {
         event.stopPropagation();
         this.selected_item = item;
 
-        this.show_error = true;
-        this.error_message = `Delete for "${item.name}" is not available yet.`;
-        window.setTimeout(() => {
-            this.show_error = false;
-        }, 2_000);
+        this.delete_file_name = item.name;
+        this.delete_loading = false;
+        this.show_delete_modal = true;
+    }
+
+    private cancel_delete() {
+        if (this.delete_loading) {
+            return;
+        }
+
+        this.show_delete_modal = false;
+        this.delete_file_name = '';
+        this.delete_loading = false;
+    }
+
+    private confirm_delete() {
+        if (this.delete_loading) {
+            return;
+        }
+
+        this.delete_loading = true;
+        const deletingFileName = this.delete_file_name;
+
+        this.clear_delete_loading_timeout();
+        this.deleteLoadingTimeout = window.setTimeout(() => {
+            this.show_delete_modal = false;
+            this.delete_loading = false;
+            this.show_error = true;
+            this.error_message = `Delete for "${deletingFileName}" is not available yet.`;
+            window.setTimeout(() => {
+                this.show_error = false;
+            }, 2_000);
+
+            this.delete_file_name = '';
+            this.deleteLoadingTimeout = undefined;
+        }, 1_100);
     }
 
     private open_upload_picker() {
@@ -819,6 +868,23 @@ export class PhirepassSftpClient {
                             >
                                 {this.download_finished ? 'Close' : 'Cancel'}
                             </button>
+                        </div>
+                    </section>
+                }
+                {this.show_delete_modal &&
+                    <section class={{
+                        'delete-modal': true,
+                        'visible': this.show_delete_modal,
+                    }}>
+                        <div class="delete-dialog" role="dialog" aria-modal="true" aria-label="Delete confirmation">
+                            <div class="title">Delete File</div>
+                            <div class="message">{this.delete_loading ? 'Deleting file...' : 'Are you sure you want to delete this file?'}</div>
+                            <div class="file-name" title={this.delete_file_name}>{this.delete_file_name}</div>
+                            {this.delete_loading && <div class="delete-loading-bar" aria-hidden="true"></div>}
+                            <div class="modal-actions">
+                                <button type="button" class="btn secondary" onClick={() => this.cancel_delete()} disabled={this.delete_loading}>Cancel</button>
+                                <button type="button" class="btn destructive" onClick={() => this.confirm_delete()} disabled={this.delete_loading}>{this.delete_loading ? 'Deleting...' : 'Delete'}</button>
+                            </div>
                         </div>
                     </section>
                 }

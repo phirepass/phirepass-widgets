@@ -278,14 +278,6 @@
                                 min-width: 58px;
                                 padding: 0 10px;
                             }
-
-                            &:hover {
-                                &.action-col {
-                                    color: blue;
-                                    background-color: red;
-                                    stroke: red;
-                                }
-                            }
                         }
                     }
 
@@ -508,7 +500,8 @@
     }
 
     .upload-modal,
-    .download-modal {
+    .download-modal,
+    .delete-modal {
         position: absolute;
         inset: 0;
         display: none;
@@ -523,7 +516,8 @@
         }
 
         .upload-dialog,
-        .download-dialog {
+        .download-dialog,
+        .delete-dialog {
             width: min(360px, calc(100% - 24px));
             background-color: rgba(21, 24, 30, 0.96);
             border: 1px solid hsl(var(--border));
@@ -602,7 +596,86 @@
                     }
                 }
             }
+
+            .message {
+                color: rgb(189, 219, 209);
+                font-size: 0.74rem;
+                line-height: 1rem;
+                margin-bottom: 8px;
+            }
+
+            .modal-actions {
+                margin-top: 14px;
+                display: grid;
+                grid-template-columns: 1fr 1fr;
+                gap: 8px;
+
+                .btn {
+                    height: 2rem;
+                    border: 1px solid hsl(var(--border));
+                    border-radius: calc(var(--radius) - 2px);
+                    font-size: 0.75rem;
+                    letter-spacing: 0.03em;
+                    cursor: pointer;
+
+                    &:disabled {
+                        opacity: 0.65;
+                        cursor: not-allowed;
+                    }
+                }
+
+                .btn.secondary {
+                    background: hsl(var(--muted));
+                    color: rgb(189, 219, 209);
+
+                    &:hover {
+                        border-color: hsl(var(--primary));
+                        color: hsl(var(--primary));
+                    }
+                }
+
+                .btn.destructive {
+                    background: hsl(var(--destructive));
+                    border-color: hsl(var(--destructive));
+                    color: white;
+
+                    &:hover {
+                        background: hsl(var(--destructive) / 0.9);
+                        border-color: hsl(var(--destructive) / 0.9);
+                    }
+                }
+            }
+
+            .delete-loading-bar {
+                margin-top: 2px;
+                width: 100%;
+                height: 8px;
+                border-radius: 999px;
+                border: 1px solid hsl(var(--border));
+                background:
+                    linear-gradient(90deg, hsl(var(--muted)) 0%, hsl(var(--muted)) 100%),
+                    linear-gradient(90deg, hsl(var(--primary) / 0.3), hsl(var(--primary)), hsl(var(--primary) / 0.3));
+                background-repeat: no-repeat;
+                background-size:
+                    100% 100%,
+                    40% 100%;
+                animation: delete-loading 1s linear infinite;
+            }
         }
+    }
+}
+
+@keyframes delete-loading {
+    from {
+        background-position:
+            0 0,
+            -45% 0;
+    }
+
+    to {
+        background-position:
+            0 0,
+            145% 0;
     }
 }
 
