@@ -495,6 +495,102 @@
             }
         }
     }
+
+    .upload-modal {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(28, 31, 38, 0);
+        backdrop-filter: blur(4px);
+        z-index: 6;
+
+        &.visible {
+            display: flex;
+        }
+
+        .upload-dialog {
+            width: min(360px, calc(100% - 24px));
+            background-color: rgba(21, 24, 30, 0.96);
+            border: 1px solid hsl(var(--border));
+            border-radius: var(--radius);
+            padding: 16px;
+            box-shadow:
+                rgba(0, 0, 0, 0) 0px 0px 0px 0px,
+                rgba(0, 0, 0, 0) 0px 0px 0px 0px,
+                rgba(0, 0, 0, 0.5) 0px 25px 50px -12px;
+
+            .title {
+                color: hsl(var(--primary));
+                font-size: 0.8rem;
+                margin-bottom: 8px;
+            }
+
+            .file-name {
+                color: rgb(189, 219, 209);
+                font-size: 0.72rem;
+                line-height: 1rem;
+                margin-bottom: 10px;
+                white-space: nowrap;
+                overflow: hidden;
+                text-overflow: ellipsis;
+            }
+
+            .progress-track {
+                width: 100%;
+                height: 10px;
+                border-radius: 999px;
+                background-color: hsl(var(--muted));
+                overflow: hidden;
+                border: 1px solid hsl(var(--border));
+
+                .progress-fill {
+                    height: 100%;
+                    width: 0;
+                    background: linear-gradient(90deg, hsl(var(--primary) / 0.7), hsl(var(--primary)));
+                    transition: width 140ms ease;
+                }
+            }
+
+            .progress-value {
+                margin-top: 8px;
+                color: hsl(var(--muted-foreground));
+                font-size: 0.7rem;
+                text-align: right;
+            }
+
+            .cancel {
+                margin-top: 14px;
+                width: 100%;
+                height: 2rem;
+                border: 1px solid hsl(var(--border));
+                border-radius: calc(var(--radius) - 2px);
+                background: hsl(var(--muted));
+                color: rgb(189, 219, 209);
+                font-size: 0.75rem;
+                letter-spacing: 0.03em;
+                cursor: pointer;
+
+                &:hover {
+                    border-color: hsl(var(--primary));
+                    color: hsl(var(--primary));
+                }
+
+                &.finished {
+                    background-color: hsl(var(--primary));
+                    border-color: hsl(var(--primary));
+                    color: hsl(var(--primary-foreground));
+
+                    &:hover {
+                        background-color: hsl(var(--primary) / 0.9);
+                        border-color: hsl(var(--primary) / 0.9);
+                        color: hsl(var(--primary-foreground));
+                    }
+                }
+            }
+        }
+    }
 }
 
 :host(.max) {

@@ -26,6 +26,7 @@ export class PhirepassSftpClient {
     private runtimeReady = false;
     private connected = false;
     private uploadInputEl?: HTMLInputElement;
+    private uploadProgressHandle?: number;
     // private inputMode: InputMode = InputMode.Default;
 
     private session_id?: number;
@@ -160,6 +161,18 @@ export class PhirepassSftpClient {
     @State()
     selected_item: SFTPListItem | null = null;
 
+    @State()
+    show_upload_modal = false;
+
+    @State()
+    upload_progress = 0;
+
+    @State()
+    upload_file_name = '';
+
+    @State()
+    upload_finished = false;
+
     private toggle_max() {
         this.maximizeEvent?.emit(!this.max);
     }
@@ -196,8 +209,16 @@ export class PhirepassSftpClient {
         this.connected = false;
         this.domReady = false;
         this.runtimeReady = false;
+        this.clear_upload_progress();
         this.close_comms();
         // this.destroy_terminal();
+    }
+
+    private clear_upload_progress() {
+        if (this.uploadProgressHandle !== undefined) {
+            window.clearInterval(this.uploadProgressHandle);
+            this.uploadProgressHandle = undefined;
+        }
     }
 
     private connect() {
@@ -450,19 +471,37 @@ export class PhirepassSftpClient {
 
     private on_upload_selected(event: Event) {
         const input = event.target as HTMLInputElement;
-        const file = input.files?.[0];
+        const selectedFile = input.files?.[0];
 
-        if (!file) {
+        if (!selectedFile) {
             return;
         }
 
-        this.show_error = true;
-        this.error_message = 'Upload is not available yet in this widget.';
-        setTimeout(() => {
-            this.show_error = false;
-        }, 2_000);
+        this.upload_file_name = selectedFile.name;
+        this.upload_progress = 0;
+        this.upload_finished = false;
+        this.show_upload_modal = true;
+
+        this.clear_upload_progress();
+        this.uploadProgressHandle = window.setInterval(() => {
+            if (this.upload_progress >= 100) {
+                this.clear_upload_progress();
+                this.upload_finished = true;
+                return;
+            }
+
+            this.upload_progress = Math.min(100, this.upload_progress + 5);
+        }, 180);
 
         input.value = '';
+    }
+
+    private cancel_upload() {
+        this.clear_upload_progress();
+        this.show_upload_modal = false;
+        this.upload_progress = 0;
+        this.upload_file_name = '';
+        this.upload_finished = false;
     }
 
     private is_selected(item: SFTPListItem): boolean {
@@ -659,6 +698,31 @@ export class PhirepassSftpClient {
                                 <button type="submit">Connect</button>
                             </div>
                         </form>
+                    </section>
+                }
+                {this.show_upload_modal &&
+                    <section class={{
+                        'upload-modal': true,
+                        'visible': this.show_upload_modal,
+                    }}>
+                        <div class="upload-dialog" role="dialog" aria-modal="true" aria-label="Upload progress">
+                            <div class="title">Uploading File</div>
+                            <div class="file-name" title={this.upload_file_name}>{this.upload_file_name}</div>
+                            <div class="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={this.upload_progress}>
+                                <div class="progress-fill" style={{ width: `${this.upload_progress}%` }}></div>
+                            </div>
+                            <div class="progress-value">{this.upload_progress}%</div>
+                            <button
+                                type="button"
+                                class={{
+                                    'cancel': true,
+                                    'finished': this.upload_finished,
+                                }}
+                                onClick={() => this.cancel_upload()}
+                            >
+                                {this.upload_finished ? 'Close' : 'Cancel'}
+                            </button>
+                        </div>
                     </section>
                 }
             </Host>
