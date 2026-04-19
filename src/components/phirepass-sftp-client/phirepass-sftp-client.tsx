@@ -10,6 +10,7 @@ import file from './phirepass-sftp-client.file.svg';
 import go_up from './phirepass-sftp-client.go_up.svg';
 import refresh from './phirepass-sftp-client.refresh.svg';
 import upload from './phirepass-sftp-client.upload.svg';
+
 import { ConnectionState, ProtocolMessage, ProtocolMessageError, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebSFTPListItems, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened, SFTPListItem } from '../../common/protocol';
 
 // https://sweet-sftp-view.lovable.app/
@@ -427,6 +428,13 @@ export class PhirepassSftpClient {
         this.show_loader = false;
     }
 
+    private on_file_row_action(item: SFTPListItem, event: MouseEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.selected_item = item;
+        window.alert(`Download for "${item.name}" is not available yet.`);
+    }
+
     private open_upload_picker() {
         this.uploadInputEl?.click();
     }
@@ -548,6 +556,7 @@ export class PhirepassSftpClient {
                                         <th>Permissions</th>
                                         <th>Owner</th>
                                         <th>Modified</th>
+                                        <th class="action-col" aria-label="Actions"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
@@ -563,6 +572,23 @@ export class PhirepassSftpClient {
                                             <td>{item.attributes.permissions ?? '-'}</td>
                                             <td>{item.attributes.user ?? '-'}</td>
                                             <td>{new Date(item.attributes.mtime * 1000).toLocaleString()}</td>
+                                            <td class="action-col">
+                                                {item.kind === 'File' &&
+                                                    <button
+                                                        type="button"
+                                                        class="file-action"
+                                                        onClick={(event) => this.on_file_row_action(item, event)}
+                                                        title="Download"
+                                                        aria-label="Download"
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                                            <polyline points="7 10 12 15 17 10"></polyline>
+                                                            <line x1="12" x2="12" y1="15" y2="3"></line>
+                                                        </svg>
+                                                    </button>
+                                                }
+                                            </td>
                                         </tr>
                                     ))}
                                 </tbody>
