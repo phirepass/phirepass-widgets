@@ -135,7 +135,7 @@ export class PhirepassSftpClient {
     current_dir = '.';
 
     @State()
-    listing?: SFTPListItem;
+    listing: Array<SFTPListItem> = [];
 
     @State()
     show_content = false;
@@ -271,7 +271,7 @@ export class PhirepassSftpClient {
     }
 
     private handle_sftp_list_items(web: ProtocolMessageWebSFTPListItems) {
-        this.listing = web.dir;
+        this.listing = web.dir.items;
         this.current_dir = web.path;
         this.breadcrumbs = web.path.split('/').map((path, index, arr) => {
             if (path === '' && index === 0) {
