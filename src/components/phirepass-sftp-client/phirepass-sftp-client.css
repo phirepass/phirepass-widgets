@@ -110,12 +110,20 @@
                 font-size: 13px;
                 animation: pulse 2s cubic-bezier(0.4, 0, 0.6, 1) infinite;
                 text-align: center;
+                height: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }
 
             .error {
                 font-size: 13px;
                 text-align: center;
                 color: hsl(var(--destructive));
+                height: 100%;
+                display: flex;
+                align-items: center;
+                justify-content: center;
             }
 
             .navigation {
