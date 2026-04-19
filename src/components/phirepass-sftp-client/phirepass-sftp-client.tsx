@@ -4,7 +4,7 @@ import init, { Channel as PhirepassChannel } from 'phirepass-channel';
 
 import svg from './phirepass-sftp-client.logo.svg';
 import max from './phirepass-sftp-client.max.svg';
-import { ConnectionState, ProtocolMessage, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
+import { ConnectionState, ProtocolMessage, ProtocolMessageError, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
 
 // https://sweet-sftp-view.lovable.app/
 
@@ -118,6 +118,9 @@ export class PhirepassSftpClient {
     @State()
     show_login_screen_password = false;
 
+    @State()
+    show_loader = true;
+
     private toggle_max() {
         this.maximizeEvent?.emit(!this.max);
     }
@@ -202,8 +205,27 @@ export class PhirepassSftpClient {
         return `${protocol}://${this.serverHost}:${this.serverPort}`;
     }
 
-    private handle_error(_error_: ProtocolMessageWebError) {
-        //
+    private handle_error(error: ProtocolMessageWebError) {
+        switch (error.kind) {
+            case ProtocolMessageError.RequiresUsernamePassword:
+                this.show_login_screen_username = true;
+                this.show_login_screen_password = true;
+                this.show_login_screen = true;
+                this.show_loader = false;
+                break;
+            case ProtocolMessageError.RequiresUsername:
+                this.show_login_screen_username = true;
+                this.show_login_screen_password = false;
+                this.show_login_screen = true;
+                this.show_loader = false;
+                break;
+            case ProtocolMessageError.RequiresPassword:
+                this.show_login_screen_username = false;
+                this.show_login_screen_password = true;
+                this.show_login_screen = true;
+                this.show_loader = false;
+                break;
+        }
     }
 
     private handle_auth_success(_auth_: ProtocolMessageWebAuthSuccess) {
@@ -323,7 +345,9 @@ export class PhirepassSftpClient {
                             </section>
                         </header>
                     }
-                    <main></main>
+                    <main>
+                        {this.show_loader && <div class="loader">Loading...</div>}
+                    </main>
                     <footer></footer>
                 </section>
                 <section class={{
@@ -332,14 +356,18 @@ export class PhirepassSftpClient {
                 }}>
                     {this.show_login_screen && <form class="form">
                         <div>SFTP Connection</div>
-                        <div>
-                            <div>Username</div>
-                            <input type="text" placeholder="" />
-                        </div>
-                        <div>
-                            <div>Password</div>
-                            <input type="password" placeholder="" />
-                        </div>
+                        {this.show_login_screen_username &&
+                            <div>
+                                <div>Username</div>
+                                <input type="text" placeholder="" />
+                            </div>
+                        }
+                        {this.show_login_screen_password &&
+                            <div>
+                                <div>Password</div>
+                                <input type="password" placeholder="" />
+                            </div>
+                        }
                         <div>
                             <button>Connect</button>
                         </div>
