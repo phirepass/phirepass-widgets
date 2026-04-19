@@ -7,6 +7,9 @@ import max from './phirepass-sftp-client.max.svg';
 import chevron from './phirepass-sftp-client.chevron.svg';
 import folder from './phirepass-sftp-client.folder.svg';
 import file from './phirepass-sftp-client.file.svg';
+import go_up from './phirepass-sftp-client.go_up.svg';
+import refresh from './phirepass-sftp-client.refresh.svg';
+import upload from './phirepass-sftp-client.upload.svg';
 import { ConnectionState, ProtocolMessage, ProtocolMessageError, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebSFTPListItems, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened, SFTPListItem } from '../../common/protocol';
 
 // https://sweet-sftp-view.lovable.app/
@@ -21,6 +24,7 @@ export class PhirepassSftpClient {
     private domReady = false;
     private runtimeReady = false;
     private connected = false;
+    private uploadInputEl?: HTMLInputElement;
     // private inputMode: InputMode = InputMode.Default;
 
     private session_id?: number;
@@ -395,6 +399,55 @@ export class PhirepassSftpClient {
         this.channel.send_sftp_list_data(this.nodeId, this.session_id!, path);
     }
 
+    private go_to_parent_directory() {
+        if (!this.session_id) {
+            return;
+        }
+
+        if (this.current_dir === '/') {
+            return;
+        }
+
+        const parent = this.breadcrumbs[this.breadcrumbs.length - 2]?.path || '/';
+        this.list_breadcrumb(parent);
+    }
+
+    private refresh_directory() {
+        if (!this.session_id) {
+            return;
+        }
+
+        this.list_breadcrumb(this.current_dir);
+    }
+
+    private disconnect_session() {
+        this.close_comms();
+        this.session_id = undefined;
+        this.status = 'Disconnected';
+        this.show_loader = false;
+    }
+
+    private open_upload_picker() {
+        this.uploadInputEl?.click();
+    }
+
+    private on_upload_selected(event: Event) {
+        const input = event.target as HTMLInputElement;
+        const file = input.files?.[0];
+
+        if (!file) {
+            return;
+        }
+
+        this.show_error = true;
+        this.error_message = 'Upload is not available yet in this widget.';
+        setTimeout(() => {
+            this.show_error = false;
+        }, 2_000);
+
+        input.value = '';
+    }
+
     private is_selected(item: SFTPListItem): boolean {
         if (!this.selected_item) {
             return false;
@@ -465,7 +518,27 @@ export class PhirepassSftpClient {
                                     </>
                                 ))}
                             </div>
+                            <section class="actions" aria-label="SFTP actions">
+                                <button type="button" class="action" onClick={() => this.go_to_parent_directory()} title="Go to parent directory" aria-label="Go to parent directory">
+                                    <img src={go_up} alt="Go up" />
+                                </button>
+                                <button type="button" class="action" onClick={() => this.refresh_directory()} title="Refresh" aria-label="Refresh">
+                                    <img src={refresh} alt="Refresh" />
+                                </button>
+                                <button type="button" class="action" onClick={() => this.open_upload_picker()} title="Upload" aria-label="Upload">
+                                    <img src={upload} alt="Upload" />
+                                </button>
+                                <button type="button" class="action disconnect" onClick={() => this.disconnect_session()} title="Disconnect" aria-label="Disconnect">
+                                    DISCONNECT
+                                </button>
+                            </section>
                         </nav>}
+                        <input
+                            type="file"
+                            ref={(el) => this.uploadInputEl = el as HTMLInputElement}
+                            onChange={(event) => this.on_upload_selected(event)}
+                            style={{ display: 'none' }}
+                        />
                         {this.show_content && <div class="content">
                             <table>
                                 <thead>

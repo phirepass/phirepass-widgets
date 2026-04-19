@@ -144,6 +144,7 @@
                 background-color: hsl(var(--card));
                 display: flex;
                 align-items: center;
+                justify-content: space-between;
                 border-bottom: 1px solid hsl(var(--border));
                 position: sticky;
                 top: 0;
@@ -181,6 +182,45 @@
                         top: 2px;
                         margin-right: 4px;
                         position: relative;
+                    }
+                }
+
+                .actions {
+                    display: flex;
+                    align-items: center;
+                    gap: 8px;
+                }
+
+                .action {
+                    border: none;
+                    background: transparent;
+                    color: rgb(189, 219, 209);
+                    font-size: 1.1rem;
+                    line-height: 1;
+                    padding: 2px 4px;
+                    border-radius: 4px;
+                    cursor: pointer;
+
+                    &:hover {
+                        background-color: hsl(var(--border) / 0.6);
+                    }
+
+                    img {
+                        height: 14px;
+                        width: 14px;
+                        display: block;
+                    }
+                }
+
+                .action.disconnect {
+                    color: #ff4d5f;
+                    font-size: 0.65rem;
+                    letter-spacing: 0.08em;
+                    padding: 4px 8px;
+
+                    &:hover {
+                        color: #ff6b7a;
+                        background-color: hsl(var(--destructive) / 0.12);
                     }
                 }
             }
