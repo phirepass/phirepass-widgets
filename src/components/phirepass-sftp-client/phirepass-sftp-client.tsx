@@ -5,7 +5,7 @@ import init, { Channel as PhirepassChannel } from 'phirepass-channel';
 import svg from './phirepass-sftp-client.logo.svg';
 import max from './phirepass-sftp-client.max.svg';
 import chevron from './phirepass-sftp-client.chevron.svg';
-import { ConnectionState, ProtocolMessage, ProtocolMessageError, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebSFTPListItems, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
+import { ConnectionState, ProtocolMessage, ProtocolMessageError, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebSFTPListItems, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened, SFTPListItem } from '../../common/protocol';
 
 // https://sweet-sftp-view.lovable.app/
 
@@ -126,13 +126,19 @@ export class PhirepassSftpClient {
     show_login_screen_password = false;
 
     @State()
-    show_navigation = true;
+    show_navigation = false;
 
     @State()
-    breadcrumbs = [{ label: '/', path: '/' }, { label: 'home', path: '/home' }, { label: 'user', path: '/home/user' }];
+    breadcrumbs: Array<{ label: string, path: string }> = [];
 
     @State()
-    show_content = true;
+    current_dir = '.';
+
+    @State()
+    listing?: SFTPListItem;
+
+    @State()
+    show_content = false;
 
     @State()
     show_loader = false;
@@ -222,7 +228,6 @@ export class PhirepassSftpClient {
     }
 
     private handle_error(error: ProtocolMessageWebError) {
-        /*
         switch (error.kind) {
             case ProtocolMessageError.Generic:
             case ProtocolMessageError.Authentication:
@@ -248,7 +253,7 @@ export class PhirepassSftpClient {
                 this.show_login_screen = true;
                 this.show_loader = false;
                 break;
-        }*/
+        }
     }
 
     private handle_auth_success(_auth_: ProtocolMessageWebAuthSuccess) {
@@ -262,11 +267,22 @@ export class PhirepassSftpClient {
         // this.terminal.reset();
         // this.fit_terminal_safely();
         // this.send_ssh_terminal_resize();
-        this.channel.send_sftp_list_data(this.nodeId, this.session_id!, '.');
+        this.channel.send_sftp_list_data(this.nodeId, this.session_id!, this.current_dir);
     }
 
     private handle_sftp_list_items(web: ProtocolMessageWebSFTPListItems) {
-        console.log('received sftp list items:', web);
+        this.listing = web.dir;
+        this.current_dir = web.path;
+        this.breadcrumbs = web.path.split('/').map((path, index, arr) => {
+            if (path === '' && index === 0) {
+                return { label: '/', path: '/' };
+            }
+
+            return { label: path, path: arr.slice(0, index + 1).join('/') };
+        });
+        this.show_loader = false;
+        this.show_content = true;
+        this.show_navigation = true;
     }
 
     private handle_tunnel_data(web: ProtocolMessageWebTunnelData) {
@@ -401,58 +417,60 @@ export class PhirepassSftpClient {
                             </div>
                         </nav>}
                         {this.show_content && <div class="content">
-                            [listing-table]
+                            {JSON.stringify(this.listing)}
                         </div>}
                         {this.show_loader && <div class="loader">Loading...</div>}
                         {this.show_error && <div class="error">{this.error_message}</div>}
                     </main>
                     <footer></footer>
                 </section>
-                <section class={{
-                    'creds': true,
-                    'blurred': this.show_login_screen,
-                }}>
-                    {this.show_login_screen && <form class="auth" onSubmit={(event) => {
-                        const formData = new FormData(event.target as HTMLFormElement);
-
-                        let username = undefined;
-                        if (this.show_login_screen_username) {
-                            username = formData.get('username') as string;
-                        }
-
-                        let password = undefined;
-                        if (this.show_login_screen_password) {
-                            password = formData.get('password') as string;
-                        }
-
-                        this.channel.open_sftp_tunnel(this.nodeId, username, password);
-
-                        this.show_login_screen_username = false;
-                        this.show_login_screen_password = false;
-                        this.show_login_screen = false;
-                        this.show_loader = true;
-
-                        event.stopPropagation();
-                        event.preventDefault();
+                {this.show_login_screen &&
+                    <section class={{
+                        'creds': true,
+                        'blurred': this.show_login_screen,
                     }}>
-                        <div class="title">SFTP Connection</div>
-                        {this.show_login_screen_username &&
+                        <form class="auth" onSubmit={(event) => {
+                            const formData = new FormData(event.target as HTMLFormElement);
+
+                            let username = undefined;
+                            if (this.show_login_screen_username) {
+                                username = formData.get('username') as string;
+                            }
+
+                            let password = undefined;
+                            if (this.show_login_screen_password) {
+                                password = formData.get('password') as string;
+                            }
+
+                            this.channel.open_sftp_tunnel(this.nodeId, username, password);
+
+                            this.show_login_screen_username = false;
+                            this.show_login_screen_password = false;
+                            this.show_login_screen = false;
+                            this.show_loader = true;
+
+                            event.stopPropagation();
+                            event.preventDefault();
+                        }}>
+                            <div class="title">SFTP Connection</div>
+                            {this.show_login_screen_username &&
+                                <div>
+                                    <label htmlFor="username">Username</label>
+                                    <input id="username" autoComplete='off' name="username" type="text" placeholder="" />
+                                </div>
+                            }
+                            {this.show_login_screen_password &&
+                                <div>
+                                    <label htmlFor="password">Password</label>
+                                    <input id="password" autoComplete='off' name="password" type="password" placeholder="" />
+                                </div>
+                            }
                             <div>
-                                <label htmlFor="username">Username</label>
-                                <input id="username" autoComplete='off' name="username" type="text" placeholder="" />
+                                <button type="submit">Connect</button>
                             </div>
-                        }
-                        {this.show_login_screen_password &&
-                            <div>
-                                <label htmlFor="password">Password</label>
-                                <input id="password" autoComplete='off' name="password" type="password" placeholder="" />
-                            </div>
-                        }
-                        <div>
-                            <button type="submit">Connect</button>
-                        </div>
-                    </form>}
-                </section>
+                        </form>
+                    </section>
+                }
             </Host>
         );
     }
