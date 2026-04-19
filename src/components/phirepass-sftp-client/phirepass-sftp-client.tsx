@@ -4,6 +4,7 @@ import init, { Channel as PhirepassChannel } from 'phirepass-channel';
 
 import svg from './phirepass-sftp-client.logo.svg';
 import max from './phirepass-sftp-client.max.svg';
+import chevron from './phirepass-sftp-client.chevron.svg';
 import { ConnectionState, ProtocolMessage, ProtocolMessageError, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebSFTPListItems, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
 
 // https://sweet-sftp-view.lovable.app/
@@ -373,7 +374,15 @@ export class PhirepassSftpClient {
                         </header>
                     }
                     <main>
-                        {this.show_navigation && <nav class="navigation">Navigation</nav>}
+                        {this.show_navigation && <nav class="navigation">
+                            <div class="breadcrumbs">
+                                <span class="breadcrumb">/</span>
+                                <img class="arrow" src={chevron} />
+                                <span class="breadcrumb">home</span>
+                                <img class="arrow" src={chevron} />
+                                <span class="breadcrumb">user</span>
+                            </div>
+                        </nav>}
                         {this.show_content && <div class="content">
                             [listing-table]
                         </div>}

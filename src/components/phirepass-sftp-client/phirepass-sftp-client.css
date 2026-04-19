@@ -127,6 +127,40 @@
                 display: flex;
                 align-items: center;
                 border-bottom: 1px solid hsl(var(--border));
+
+                .breadcrumbs {
+                    display: flex;
+                    align-items: center;
+                    margin-right: 10px;
+
+                    .breadcrumb {
+                        color: hsl(var(--primary));
+                        margin-right: 4px;
+                        cursor: pointer;
+
+                        &:after {
+                            margin-left: 4px;
+                        }
+
+                        &:hover {
+                            color: rgb(189, 219, 209);
+                        }
+
+                        &:last-child {
+                            margin-right: 0;
+                            color: rgb(189, 219, 209);
+                            cursor: default;
+                        }
+                    }
+
+                    .arrow {
+                        height: 12px;
+                        width: 12px;
+                        opacity: 0.6;
+                        margin-bottom: 2px;
+                        margin-right: 4px;
+                    }
+                }
             }
 
             .content {
@@ -154,6 +188,8 @@
         display: flex;
         justify-content: center;
         align-items: center;
+
+        display: none;
 
         &.blurred {
             background: rgba(28, 31, 38, 0);
