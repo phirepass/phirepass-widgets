@@ -125,7 +125,13 @@ export class PhirepassSftpClient {
     show_login_screen_password = false;
 
     @State()
-    show_loader = true;
+    show_navigation = true;
+
+    @State()
+    show_content = true;
+
+    @State()
+    show_loader = false;
 
     private toggle_max() {
         this.maximizeEvent?.emit(!this.max);
@@ -212,6 +218,7 @@ export class PhirepassSftpClient {
     }
 
     private handle_error(error: ProtocolMessageWebError) {
+        /*
         switch (error.kind) {
             case ProtocolMessageError.Generic:
             case ProtocolMessageError.Authentication:
@@ -237,7 +244,7 @@ export class PhirepassSftpClient {
                 this.show_login_screen = true;
                 this.show_loader = false;
                 break;
-        }
+        }*/
     }
 
     private handle_auth_success(_auth_: ProtocolMessageWebAuthSuccess) {
@@ -366,6 +373,10 @@ export class PhirepassSftpClient {
                         </header>
                     }
                     <main>
+                        {this.show_navigation && <nav class="navigation">Navigation</nav>}
+                        {this.show_content && <div class="content">
+                            [listing-table]
+                        </div>}
                         {this.show_loader && <div class="loader">Loading...</div>}
                         {this.show_error && <div class="error">{this.error_message}</div>}
                     </main>
