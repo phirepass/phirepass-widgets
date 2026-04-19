@@ -456,7 +456,7 @@ export class PhirepassSftpClient {
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {this.listing.map((item, index, all) => (
+                                    {this.listing.map((item, index) => (
                                         <tr key={index} onClick={() => this.list_directory(item)}>
                                             <td>
                                                 {item.kind === 'Folder' ? <img class="kind" src={folder} alt="Folder" /> : <img class="kind" src={file} alt="File" />}
