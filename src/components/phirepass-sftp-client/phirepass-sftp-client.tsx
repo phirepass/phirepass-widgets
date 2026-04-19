@@ -116,6 +116,12 @@ export class PhirepassSftpClient {
     show_login_screen_username = false;
 
     @State()
+    show_error = false;
+
+    @State()
+    error_message = '';
+
+    @State()
     show_login_screen_password = false;
 
     @State()
@@ -207,11 +213,11 @@ export class PhirepassSftpClient {
 
     private handle_error(error: ProtocolMessageWebError) {
         switch (error.kind) {
-            case ProtocolMessageError.RequiresUsernamePassword:
-                this.show_login_screen_username = true;
-                this.show_login_screen_password = true;
-                this.show_login_screen = true;
+            case ProtocolMessageError.Generic:
+            case ProtocolMessageError.Authentication:
+                this.error_message = error.message || 'An unknown error occurred.';
                 this.show_loader = false;
+                this.show_error = true;
                 break;
             case ProtocolMessageError.RequiresUsername:
                 this.show_login_screen_username = true;
@@ -221,6 +227,12 @@ export class PhirepassSftpClient {
                 break;
             case ProtocolMessageError.RequiresPassword:
                 this.show_login_screen_username = false;
+                this.show_login_screen_password = true;
+                this.show_login_screen = true;
+                this.show_loader = false;
+                break;
+            case ProtocolMessageError.RequiresUsernamePassword:
+                this.show_login_screen_username = true;
                 this.show_login_screen_password = true;
                 this.show_login_screen = true;
                 this.show_loader = false;
@@ -348,6 +360,7 @@ export class PhirepassSftpClient {
                     }
                     <main>
                         {this.show_loader && <div class="loader">Loading...</div>}
+                        {this.show_error && <div class="error">{this.error_message}</div>}
                     </main>
                     <footer></footer>
                 </section>
