@@ -500,6 +500,18 @@ export class PhirepassSftpClient {
         }, 180);
     }
 
+    private on_file_delete_action(item: SFTPListItem, event: MouseEvent) {
+        event.preventDefault();
+        event.stopPropagation();
+        this.selected_item = item;
+
+        this.show_error = true;
+        this.error_message = `Delete for "${item.name}" is not available yet.`;
+        window.setTimeout(() => {
+            this.show_error = false;
+        }, 2_000);
+    }
+
     private open_upload_picker() {
         this.uploadInputEl?.click();
     }
@@ -665,19 +677,36 @@ export class PhirepassSftpClient {
                                             <td>{new Date(item.attributes.mtime * 1000).toLocaleString()}</td>
                                             <td class="action-col">
                                                 {item.kind === 'File' &&
-                                                    <button
-                                                        type="button"
-                                                        class="file-action"
-                                                        onClick={(event) => this.on_file_row_action(item, event)}
-                                                        title="Download"
-                                                        aria-label="Download"
-                                                    >
-                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                                            <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
-                                                            <polyline points="7 10 12 15 17 10"></polyline>
-                                                            <line x1="12" x2="12" y1="15" y2="3"></line>
-                                                        </svg>
-                                                    </button>
+                                                    <div class="file-actions">
+                                                        <button
+                                                            type="button"
+                                                            class="file-action"
+                                                            onClick={(event) => this.on_file_row_action(item, event)}
+                                                            title="Download"
+                                                            aria-label="Download"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+                                                                <polyline points="7 10 12 15 17 10"></polyline>
+                                                                <line x1="12" x2="12" y1="15" y2="3"></line>
+                                                            </svg>
+                                                        </button>
+                                                        <button
+                                                            type="button"
+                                                            class="file-action delete"
+                                                            onClick={(event) => this.on_file_delete_action(item, event)}
+                                                            title="Delete"
+                                                            aria-label="Delete"
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                <polyline points="3 6 5 6 21 6"></polyline>
+                                                                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                                                                <line x1="10" x2="10" y1="11" y2="17"></line>
+                                                                <line x1="14" x2="14" y1="11" y2="17"></line>
+                                                            </svg>
+                                                        </button>
+                                                    </div>
                                                 }
                                             </td>
                                         </tr>

@@ -274,8 +274,8 @@
                             line-height: 0.95rem;
 
                             &.action-col {
-                                width: 20px;
-                                min-width: 20px;
+                                width: 58px;
+                                min-width: 58px;
                                 padding: 0 10px;
                             }
 
@@ -299,11 +299,18 @@
                                 color: hsl(var(--muted-foreground));
 
                                 &.action-col {
-                                    width: 20px;
-                                    min-width: 20px;
+                                    width: 58px;
+                                    min-width: 58px;
                                     text-align: center;
                                     padding-left: 1px;
                                     padding-right: 1px;
+
+                                    .file-actions {
+                                        display: flex;
+                                        align-items: center;
+                                        justify-content: center;
+                                        gap: 8px;
+                                    }
 
                                     .file-action {
                                         border: none;
@@ -328,6 +335,10 @@
 
                                         &:hover {
                                             color: hsl(var(--primary));
+                                        }
+
+                                        &.delete:hover {
+                                            color: hsl(var(--destructive));
                                         }
                                     }
                                 }
