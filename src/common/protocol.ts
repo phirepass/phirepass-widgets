@@ -46,7 +46,7 @@ export type SFTPListItem = {
         group: string;
         permissions: number;
         atime: number;
-        mtime: number;
+        modified: number;
     };
 };
 

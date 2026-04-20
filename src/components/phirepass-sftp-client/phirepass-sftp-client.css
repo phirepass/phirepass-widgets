@@ -257,6 +257,7 @@
                     width: 100%;
                     border-collapse: separate;
                     border-spacing: 0;
+                    table-layout: auto;
 
                     thead {
                         background-color: hsl(var(--muted));
@@ -278,6 +279,20 @@
                                 min-width: 58px;
                                 padding: 0 10px;
                             }
+
+                            &:first-child {
+                                width: 30%;
+                                min-width: 180px;
+                                max-width: 195px;
+                            }
+
+                            &:nth-child(2),
+                            &:nth-child(3),
+                            &:nth-child(4),
+                            &:nth-child(5) {
+                                white-space: nowrap;
+                                width: 1%;
+                            }
                         }
                     }
 
@@ -289,6 +304,27 @@
                             td {
                                 padding: 10px 10px 9px;
                                 color: hsl(var(--muted-foreground));
+
+                                &:first-child {
+                                    min-width: 180px;
+                                    max-width: 195px;
+                                    white-space: nowrap;
+
+                                    .name {
+                                        display: inline-block;
+                                        max-width: calc(100% - 26px);
+                                        overflow: hidden;
+                                        text-overflow: ellipsis;
+                                        vertical-align: middle;
+                                    }
+                                }
+
+                                &:nth-child(2),
+                                &:nth-child(3),
+                                &:nth-child(4),
+                                &:nth-child(5) {
+                                    white-space: nowrap;
+                                }
 
                                 &.action-col {
                                     width: 58px;

@@ -366,6 +366,8 @@ export class PhirepassSftpClient {
 
         this.show_content = true;
         this.show_navigation = true;
+
+        console.log('Received SFTP list items:', web);
     }
 
     private handle_tunnel_data(web: ProtocolMessageWebTunnelData) {
@@ -645,6 +647,100 @@ export class PhirepassSftpClient {
         return [item.path, item.name].join('/');
     }
 
+    private format_size(size: number | undefined): string {
+        if (size === undefined || Number.isNaN(size)) {
+            return '-';
+        }
+
+        if (size < 1024) {
+            return `${size} B`;
+        }
+
+        const units = ['KB', 'MB', 'GB', 'TB', 'PB'];
+        let value = size;
+        let unitIndex = -1;
+
+        while (value >= 1024 && unitIndex < units.length - 1) {
+            value /= 1024;
+            unitIndex += 1;
+        }
+
+        const rounded = value >= 10 ? value.toFixed(1) : value.toFixed(2);
+        return `${rounded} ${units[unitIndex]}`;
+    }
+
+    private mode_type_to_char(mode: number, kind?: SFTPListItem['kind']): string {
+        const S_IFMT = 0o170000;
+        const type = mode & S_IFMT;
+
+        switch (type) {
+            case 0o140000: return 's';
+            case 0o120000: return 'l';
+            case 0o100000: return '-';
+            case 0o060000: return 'b';
+            case 0o040000: return 'd';
+            case 0o020000: return 'c';
+            case 0o010000: return 'p';
+            default:
+                return kind === 'Folder' ? 'd' : '-';
+        }
+    }
+
+    private format_permissions(permissions: number | string | undefined, kind?: SFTPListItem['kind']): string {
+        if (permissions === undefined || permissions === null) {
+            return '-';
+        }
+
+        if (typeof permissions === 'string') {
+            const value = permissions.trim();
+
+            if (/^[bcdlps-][rwxStTs-]{9}$/.test(value)) {
+                return value;
+            }
+
+            if (/^[0-7]{3,4}$/.test(value)) {
+                const mode = parseInt(value, 8);
+                return this.format_permissions(mode, kind);
+            }
+
+            if (/^\d+$/.test(value)) {
+                const mode = parseInt(value, 10);
+                return this.format_permissions(mode, kind);
+            }
+
+            return value || '-';
+        }
+
+        const mode = permissions;
+        const typeChar = this.mode_type_to_char(mode, kind);
+
+        const chars = [
+            mode & 0o400 ? 'r' : '-',
+            mode & 0o200 ? 'w' : '-',
+            mode & 0o100 ? 'x' : '-',
+            mode & 0o040 ? 'r' : '-',
+            mode & 0o020 ? 'w' : '-',
+            mode & 0o010 ? 'x' : '-',
+            mode & 0o004 ? 'r' : '-',
+            mode & 0o002 ? 'w' : '-',
+            mode & 0o001 ? 'x' : '-',
+        ];
+
+        if (mode & 0o4000) {
+            chars[2] = chars[2] === 'x' ? 's' : 'S';
+        }
+
+        if (mode & 0o2000) {
+            chars[5] = chars[5] === 'x' ? 's' : 'S';
+        }
+
+        if (mode & 0o1000) {
+            chars[8] = chars[8] === 'x' ? 't' : 'T';
+        }
+
+        return `${typeChar}${chars.join('')}`;
+    }
+
     render() {
         return (
             <Host class={{
@@ -720,10 +816,10 @@ export class PhirepassSftpClient {
                                                 {item.kind === 'Folder' ? <img class="kind" src={folder} alt="Folder" /> : <img class="kind" src={file} alt="File" />}
                                                 <span class={`name ${item.kind.toLowerCase()}`}>{item.name}</span>
                                             </td>
-                                            <td>{item.attributes.size}</td>
-                                            <td>{item.attributes.permissions ?? '-'}</td>
+                                            <td>{this.format_size(item.attributes.size)}</td>
+                                            <td>{this.format_permissions(item.attributes.permissions, item.kind)}</td>
                                             <td>{item.attributes.user ?? '-'}</td>
-                                            <td>{new Date(item.attributes.mtime * 1000).toLocaleString()}</td>
+                                            <td>{new Date(item.attributes.modified * 1000).toLocaleString()}</td>
                                             <td class="action-col">
                                                 {item.kind === 'File' &&
                                                     <div class="file-actions">
@@ -806,13 +902,13 @@ export class PhirepassSftpClient {
                             {this.show_login_screen_username &&
                                 <div>
                                     <label htmlFor="username">Username</label>
-                                    <input id="username" autoComplete='off' name="username" type="text" placeholder="" />
+                                    <input autocorrect="off" autocapitalize="none" autoComplete="off" id="username" name="username" type="text" placeholder="" />
                                 </div>
                             }
                             {this.show_login_screen_password &&
                                 <div>
                                     <label htmlFor="password">Password</label>
-                                    <input id="password" autoComplete='off' name="password" type="password" placeholder="" />
+                                    <input autocorrect="off" autocapitalize="none" autoComplete="off" id="password" name="password" type="password" placeholder="" />
                                 </div>
                             }
                             <div>
