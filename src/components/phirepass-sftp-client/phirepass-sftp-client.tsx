@@ -1302,10 +1302,10 @@ export class PhirepassSftpClient {
                         {this.show_navigation && <nav class="navigation">
                             <div class="breadcrumbs">
                                 {this.breadcrumbs.map((crumb, index, breadcrumbs) => (
-                                    <>
+                                    <span key={index} class="breadcrumb-container">
                                         <span key={index} onClick={() => this.list_breadcrumb(crumb.path)} class="breadcrumb">{crumb.label}</span>
                                         {index < breadcrumbs.length - 1 && <img class="arrow" src={chevron} />}
-                                    </>
+                                    </span>
                                 ))}
                             </div>
                             <section class="actions" aria-label="SFTP actions">

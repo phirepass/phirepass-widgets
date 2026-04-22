@@ -156,23 +156,27 @@
                     align-items: center;
                     margin-right: 10px;
 
-                    .breadcrumb {
-                        color: hsl(var(--primary));
-                        margin-right: 4px;
-                        cursor: pointer;
+                    .breadcrumb-container {
+                        white-space: nowrap;
 
-                        &:after {
-                            margin-left: 4px;
-                        }
+                        .breadcrumb {
+                            color: hsl(var(--primary));
+                            margin-right: 4px;
+                            cursor: pointer;
 
-                        &:hover {
-                            color: rgb(189, 219, 209);
-                        }
+                            &:after {
+                                margin-left: 4px;
+                            }
 
-                        &:last-child {
-                            margin-right: 0;
-                            color: rgb(189, 219, 209);
-                            cursor: default;
+                            &:hover {
+                                color: rgb(189, 219, 209);
+                            }
+
+                            &:last-child {
+                                margin-right: 0;
+                                color: rgb(189, 219, 209);
+                                cursor: default;
+                            }
                         }
                     }
 
