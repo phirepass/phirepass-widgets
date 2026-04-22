@@ -58,6 +58,41 @@ export type ProtocolMessageWebSFTPListItems = {
     type: 'SFTPListItems';
 };
 
+export type ProtocolMessageWebSFTPDownloadStartResponse = {
+    msg_id?: number;
+    response: {
+        download_id: number;
+        total_size: number;
+        total_chunks: number;
+    };
+    type: 'SFTPDownloadStartResponse';
+};
+
+export type ProtocolMessageWebSFTPDownloadChunk = {
+    msg_id?: number;
+    chunk: {
+        chunk_index: number;
+        chunk_size: number;
+        data: number[];
+    };
+    type: 'SFTPDownloadChunk';
+};
+
+export type ProtocolMessageWebSFTPUploadStartResponse = {
+    msg_id?: number;
+    response: {
+        upload_id: number;
+    };
+    type: 'SFTPUploadStartResponse';
+};
+
+export type ProtocolMessageWebSFTPUploadChunkAck = {
+    msg_id?: number;
+    upload_id: number;
+    chunk_index: number;
+    type: 'SFTPUploadChunkAck';
+};
+
 export type ProtocolMessage = {
     version: number;
     encoding: 'MessagePack' | 'JSON';
@@ -68,7 +103,11 @@ export type ProtocolMessage = {
             | ProtocolMessageWebTunnelOpened
             | ProtocolMessageWebTunnelData
             | ProtocolMessageWebTunnelClosed
-            | ProtocolMessageWebSFTPListItems;
+            | ProtocolMessageWebSFTPListItems
+            | ProtocolMessageWebSFTPDownloadStartResponse
+            | ProtocolMessageWebSFTPDownloadChunk
+            | ProtocolMessageWebSFTPUploadStartResponse
+            | ProtocolMessageWebSFTPUploadChunkAck;
     };
 };
 
@@ -79,6 +118,10 @@ export enum ProtocolMessageType {
     TunnelClosed = 'TunnelClosed',
     TunnelData = 'TunnelData',
     SFTPListItems = 'SFTPListItems',
+    SFTPDownloadStartResponse = 'SFTPDownloadStartResponse',
+    SFTPDownloadChunk = 'SFTPDownloadChunk',
+    SFTPUploadStartResponse = 'SFTPUploadStartResponse',
+    SFTPUploadChunkAck = 'SFTPUploadChunkAck',
 }
 
 export enum InputMode {

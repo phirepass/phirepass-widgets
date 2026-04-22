@@ -11,7 +11,58 @@ import go_up from './phirepass-sftp-client.go_up.svg';
 import refresh from './phirepass-sftp-client.refresh.svg';
 import upload from './phirepass-sftp-client.upload.svg';
 
-import { ConnectionState, ProtocolMessage, ProtocolMessageError, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebSFTPListItems, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened, SFTPListItem } from '../../common/protocol';
+import {
+    ConnectionState,
+    ProtocolMessage,
+    ProtocolMessageError,
+    ProtocolMessageType,
+    ProtocolMessageWebAuthSuccess,
+    ProtocolMessageWebError,
+    ProtocolMessageWebSFTPDownloadChunk,
+    ProtocolMessageWebSFTPDownloadStartResponse,
+    ProtocolMessageWebSFTPListItems,
+    ProtocolMessageWebSFTPUploadChunkAck,
+    ProtocolMessageWebSFTPUploadStartResponse,
+    ProtocolMessageWebTunnelClosed,
+    ProtocolMessageWebTunnelData,
+    ProtocolMessageWebTunnelOpened,
+    SFTPListItem,
+} from '../../common/protocol';
+
+type PendingUploadStart = {
+    timeout: number;
+    resolve: (uploadId: number) => void;
+    reject: (err: Error) => void;
+};
+
+type PendingUploadAck = {
+    timeout: number;
+    resolve: () => void;
+    reject: (err: Error) => void;
+};
+
+type PendingDownloadStart = {
+    timeout: number;
+    resolve: (payload: { download_id: number; total_size: number; total_chunks: number }) => void;
+    reject: (err: Error) => void;
+};
+
+type ActiveDownload = {
+    filename: string;
+    chunks: Map<number, Uint8Array>;
+    total_chunks: number;
+    total_size: number;
+    download_id: number;
+    nextChunkToRequest: number;
+    startTime: number;
+};
+
+type PendingDelete = {
+    filename: string;
+    msgId: number;
+    startedAt: number;
+    interval?: number;
+};
 
 // https://sweet-sftp-view.lovable.app/
 
@@ -26,9 +77,15 @@ export class PhirepassSftpClient {
     private runtimeReady = false;
     private connected = false;
     private uploadInputEl?: HTMLInputElement;
-    private uploadProgressHandle?: number;
-    private downloadProgressHandle?: number;
     private deleteLoadingTimeout?: number;
+    private msgId = 1;
+    private activeUploadToken = 0;
+    private pendingUploadStarts = new Map<number, PendingUploadStart>();
+    private pendingUploadAcks = new Map<string, PendingUploadAck>();
+    private pendingDownloadStarts = new Map<number, PendingDownloadStart>();
+    private activeDownloads = new Map<number, ActiveDownload>();
+    private activeDownloadMsgId?: number;
+    private pendingDelete?: PendingDelete;
     // private inputMode: InputMode = InputMode.Default;
 
     private session_id?: number;
@@ -173,6 +230,9 @@ export class PhirepassSftpClient {
     upload_file_name = '';
 
     @State()
+    upload_speed = '--';
+
+    @State()
     upload_finished = false;
 
     @State()
@@ -183,6 +243,9 @@ export class PhirepassSftpClient {
 
     @State()
     download_file_name = '';
+
+    @State()
+    download_speed = '--';
 
     @State()
     download_finished = false;
@@ -232,25 +295,12 @@ export class PhirepassSftpClient {
         this.connected = false;
         this.domReady = false;
         this.runtimeReady = false;
-        this.clear_upload_progress();
-        this.clear_download_progress();
+        this.cancel_active_upload();
+        this.cancel_active_download();
+        this.clear_pending_operations();
         this.clear_delete_loading_timeout();
         this.close_comms();
         // this.destroy_terminal();
-    }
-
-    private clear_upload_progress() {
-        if (this.uploadProgressHandle !== undefined) {
-            window.clearInterval(this.uploadProgressHandle);
-            this.uploadProgressHandle = undefined;
-        }
-    }
-
-    private clear_download_progress() {
-        if (this.downloadProgressHandle !== undefined) {
-            window.clearInterval(this.downloadProgressHandle);
-            this.downloadProgressHandle = undefined;
-        }
     }
 
     private clear_delete_loading_timeout() {
@@ -258,6 +308,129 @@ export class PhirepassSftpClient {
             window.clearTimeout(this.deleteLoadingTimeout);
             this.deleteLoadingTimeout = undefined;
         }
+    }
+
+    private next_msg_id(): number {
+        const id = this.msgId;
+        this.msgId += 1;
+        return id;
+    }
+
+    private clear_pending_operations() {
+        this.pendingUploadStarts.forEach((pending) => {
+            window.clearTimeout(pending.timeout);
+            pending.reject(new Error('Upload start aborted'));
+        });
+        this.pendingUploadStarts.clear();
+
+        this.pendingUploadAcks.forEach((pending) => {
+            window.clearTimeout(pending.timeout);
+            pending.reject(new Error('Upload chunk aborted'));
+        });
+        this.pendingUploadAcks.clear();
+
+        this.pendingDownloadStarts.forEach((pending) => {
+            window.clearTimeout(pending.timeout);
+            pending.reject(new Error('Download start aborted'));
+        });
+        this.pendingDownloadStarts.clear();
+
+        this.stop_delete_polling();
+
+        this.activeDownloads.clear();
+    }
+
+    private stop_delete_polling() {
+        if (this.pendingDelete?.interval !== undefined) {
+            window.clearInterval(this.pendingDelete.interval);
+        }
+        this.pendingDelete = undefined;
+    }
+
+    private cancel_active_upload() {
+        this.activeUploadToken += 1;
+        this.upload_progress = 0;
+        this.upload_finished = false;
+        this.upload_speed = '--';
+    }
+
+    private cancel_active_download() {
+        if (this.activeDownloadMsgId !== undefined) {
+            this.activeDownloads.delete(this.activeDownloadMsgId);
+        }
+        this.activeDownloadMsgId = undefined;
+        this.download_progress = 0;
+        this.download_finished = false;
+        this.download_speed = '--';
+    }
+
+    private format_duration(seconds: number): string {
+        if (!Number.isFinite(seconds) || seconds < 0) {
+            return '--';
+        }
+
+        if (seconds < 60) {
+            return `${seconds.toFixed(0)}s`;
+        }
+
+        const minutes = Math.floor(seconds / 60);
+        const remainderSeconds = Math.floor(seconds % 60);
+        if (minutes < 60) {
+            return `${minutes}m ${remainderSeconds}s`;
+        }
+
+        const hours = Math.floor(minutes / 60);
+        const remainderMinutes = minutes % 60;
+        return `${hours}h ${remainderMinutes}m`;
+    }
+
+    private format_percent(value: number): string {
+        const safe = Number.isFinite(value) ? value : 0;
+        return `${safe.toFixed(2)}%`;
+    }
+
+    private format_transfer_rate(bytesPerSecond: number): string {
+        if (!Number.isFinite(bytesPerSecond) || bytesPerSecond <= 0) {
+            return '--';
+        }
+
+        return `${this.format_size(bytesPerSecond)}/s`;
+    }
+
+    private update_upload_progress(uploadedBytes: number, totalBytes: number, startTime: number) {
+        const progress = totalBytes > 0 ? (uploadedBytes / totalBytes) * 100 : 0;
+        this.upload_progress = Math.max(0, Math.min(100, progress));
+
+        if (uploadedBytes >= totalBytes) {
+            this.upload_finished = true;
+            this.upload_speed = '--';
+            return;
+        }
+
+        const elapsedSeconds = (performance.now() - startTime) / 1000;
+        const speed = elapsedSeconds > 0 ? uploadedBytes / elapsedSeconds : 0;
+        this.upload_speed = this.format_transfer_rate(speed);
+        const remaining = totalBytes - uploadedBytes;
+        const eta = speed > 0 ? remaining / speed : NaN;
+        this.status = `Uploading ${this.format_size(uploadedBytes)} / ${this.format_size(totalBytes)} (ETA ${this.format_duration(eta)})`;
+    }
+
+    private update_download_progress(receivedBytes: number, totalBytes: number, startTime: number) {
+        const progress = totalBytes > 0 ? (receivedBytes / totalBytes) * 100 : 0;
+        this.download_progress = Math.max(0, Math.min(100, progress));
+
+        if (receivedBytes >= totalBytes) {
+            this.download_finished = true;
+            this.download_speed = '--';
+            return;
+        }
+
+        const elapsedSeconds = (Date.now() - startTime) / 1000;
+        const speed = elapsedSeconds > 0 ? receivedBytes / elapsedSeconds : 0;
+        this.download_speed = this.format_transfer_rate(speed);
+        const remaining = totalBytes - receivedBytes;
+        const eta = speed > 0 ? remaining / speed : NaN;
+        this.status = `Downloading ${this.format_size(receivedBytes)} / ${this.format_size(totalBytes)} (ETA ${this.format_duration(eta)})`;
     }
 
     private connect() {
@@ -306,10 +479,42 @@ export class PhirepassSftpClient {
     }
 
     private handle_error(error: ProtocolMessageWebError) {
+        if (error.msg_id !== undefined) {
+            const pendingUploadStart = this.pendingUploadStarts.get(error.msg_id);
+            if (pendingUploadStart) {
+                window.clearTimeout(pendingUploadStart.timeout);
+                pendingUploadStart.reject(new Error(error.message || 'Upload start failed'));
+                this.pendingUploadStarts.delete(error.msg_id);
+            }
+
+            const pendingDownloadStart = this.pendingDownloadStarts.get(error.msg_id);
+            if (pendingDownloadStart) {
+                window.clearTimeout(pendingDownloadStart.timeout);
+                pendingDownloadStart.reject(new Error(error.message || 'Download start failed'));
+                this.pendingDownloadStarts.delete(error.msg_id);
+            }
+
+            if (this.activeDownloads.has(error.msg_id)) {
+                this.activeDownloads.delete(error.msg_id);
+                if (this.activeDownloadMsgId === error.msg_id) {
+                    this.activeDownloadMsgId = undefined;
+                }
+                this.download_finished = false;
+            }
+
+            if (this.pendingDelete?.msgId === error.msg_id) {
+                this.stop_delete_polling();
+                this.delete_loading = false;
+                this.show_delete_modal = false;
+                this.status = 'Connected';
+            }
+        }
+
         switch (error.kind) {
             case ProtocolMessageError.Generic:
             case ProtocolMessageError.Authentication:
                 this.error_message = error.message || 'An unknown error occurred.';
+                this.show_error = true;
                 break;
             case ProtocolMessageError.RequiresUsername:
                 this.show_login_screen_username = true;
@@ -367,7 +572,299 @@ export class PhirepassSftpClient {
         this.show_content = true;
         this.show_navigation = true;
 
+        if (this.pendingDelete && web.path === this.current_dir) {
+            const fileStillExists = web.dir.items.some((item) => item.kind === 'File' && item.name === this.pendingDelete?.filename);
+            if (!fileStillExists) {
+                this.stop_delete_polling();
+                this.delete_loading = false;
+                this.show_delete_modal = false;
+                this.delete_file_name = '';
+                this.status = 'Connected';
+            }
+        }
+
         console.log('Received SFTP list items:', web);
+    }
+
+    private handle_upload_start_response(web: ProtocolMessageWebSFTPUploadStartResponse) {
+        if (web.msg_id === undefined) {
+            return;
+        }
+
+        const pending = this.pendingUploadStarts.get(web.msg_id);
+        if (!pending) {
+            return;
+        }
+
+        window.clearTimeout(pending.timeout);
+        pending.resolve(web.response.upload_id);
+        this.pendingUploadStarts.delete(web.msg_id);
+    }
+
+    private handle_upload_chunk_ack(web: ProtocolMessageWebSFTPUploadChunkAck) {
+        const key = `${web.upload_id}_${web.chunk_index}`;
+        const pending = this.pendingUploadAcks.get(key);
+        if (!pending) {
+            return;
+        }
+
+        window.clearTimeout(pending.timeout);
+        pending.resolve();
+        this.pendingUploadAcks.delete(key);
+    }
+
+    private handle_download_start_response(web: ProtocolMessageWebSFTPDownloadStartResponse) {
+        if (web.msg_id === undefined) {
+            return;
+        }
+
+        const pending = this.pendingDownloadStarts.get(web.msg_id);
+        if (!pending) {
+            return;
+        }
+
+        window.clearTimeout(pending.timeout);
+        pending.resolve({
+            download_id: web.response.download_id,
+            total_size: web.response.total_size,
+            total_chunks: web.response.total_chunks,
+        });
+        this.pendingDownloadStarts.delete(web.msg_id);
+    }
+
+    private request_next_download_chunk(msgId: number) {
+        const download = this.activeDownloads.get(msgId);
+        if (!download || !this.session_id) {
+            return;
+        }
+
+        this.channel.send_sftp_download_chunk(
+            this.nodeId,
+            this.session_id,
+            download.download_id,
+            download.nextChunkToRequest,
+            msgId,
+        );
+        download.nextChunkToRequest += 1;
+    }
+
+    private finalize_download(msgId: number) {
+        const download = this.activeDownloads.get(msgId);
+        if (!download) {
+            return;
+        }
+
+        const sortedChunks = Array.from(download.chunks.entries())
+            .sort((a, b) => a[0] - b[0])
+            .map(([, data]) => data);
+
+        // Normalize to fresh ArrayBuffer-backed views for BlobPart compatibility.
+        const blobParts: BlobPart[] = sortedChunks.map((chunk) => new Uint8Array(chunk));
+
+        const blob = new Blob(blobParts, { type: 'application/octet-stream' });
+        const objectUrl = URL.createObjectURL(blob);
+        const anchor = document.createElement('a');
+        anchor.href = objectUrl;
+        anchor.download = download.filename;
+        document.body.appendChild(anchor);
+        anchor.click();
+        document.body.removeChild(anchor);
+        URL.revokeObjectURL(objectUrl);
+
+        this.activeDownloads.delete(msgId);
+        if (this.activeDownloadMsgId === msgId) {
+            this.activeDownloadMsgId = undefined;
+        }
+
+        this.download_finished = true;
+        this.status = 'Connected';
+    }
+
+    private handle_download_chunk(web: ProtocolMessageWebSFTPDownloadChunk) {
+        if (web.msg_id === undefined) {
+            return;
+        }
+
+        const download = this.activeDownloads.get(web.msg_id);
+        if (!download) {
+            return;
+        }
+
+        const chunkData = new Uint8Array(web.chunk.data);
+        download.chunks.set(web.chunk.chunk_index, chunkData);
+
+        const receivedBytes = Array.from(download.chunks.values()).reduce((sum, data) => sum + data.length, 0);
+        this.update_download_progress(receivedBytes, download.total_size, download.startTime);
+
+        if (download.chunks.size >= download.total_chunks) {
+            this.finalize_download(web.msg_id);
+            return;
+        }
+
+        this.request_next_download_chunk(web.msg_id);
+    }
+
+    private async start_download(item: SFTPListItem) {
+        if (!this.session_id) {
+            return;
+        }
+
+        this.selected_item = item;
+        this.download_file_name = item.name;
+        this.download_progress = 0;
+        this.download_finished = false;
+        this.download_speed = '--';
+        this.show_download_modal = true;
+        this.show_error = false;
+
+        const msgId = this.next_msg_id();
+        this.activeDownloadMsgId = msgId;
+        this.activeDownloads.set(msgId, {
+            filename: item.name,
+            chunks: new Map<number, Uint8Array>(),
+            total_chunks: 0,
+            total_size: 0,
+            download_id: 0,
+            nextChunkToRequest: 0,
+            startTime: Date.now(),
+        });
+
+        const downloadStart = new Promise<{ download_id: number; total_size: number; total_chunks: number }>((resolve, reject) => {
+            const timeout = window.setTimeout(() => {
+                this.pendingDownloadStarts.delete(msgId);
+                reject(new Error('Download start timeout'));
+            }, 10_000);
+
+            this.pendingDownloadStarts.set(msgId, {
+                timeout,
+                resolve,
+                reject,
+            });
+        });
+
+        try {
+            this.channel.send_sftp_download_start(this.nodeId, this.session_id, item.path, item.name, msgId);
+            const { download_id, total_chunks, total_size } = await downloadStart;
+
+            const download = this.activeDownloads.get(msgId);
+            if (!download) {
+                return;
+            }
+
+            download.download_id = download_id;
+            download.total_chunks = total_chunks;
+            download.total_size = total_size;
+            download.nextChunkToRequest = 0;
+
+            this.request_next_download_chunk(msgId);
+        } catch (err) {
+            this.activeDownloads.delete(msgId);
+            if (this.activeDownloadMsgId === msgId) {
+                this.activeDownloadMsgId = undefined;
+            }
+            this.show_error = true;
+            this.error_message = err instanceof Error ? err.message : 'Failed to start download';
+            this.cancel_download();
+        }
+    }
+
+    private async upload_file(fileToUpload: File) {
+        if (!this.session_id) {
+            return;
+        }
+
+        const uploadToken = this.activeUploadToken + 1;
+        this.activeUploadToken = uploadToken;
+
+        this.upload_file_name = fileToUpload.name;
+        this.upload_progress = 0;
+        this.upload_finished = false;
+        this.upload_speed = '--';
+        this.show_upload_modal = true;
+        this.show_error = false;
+        this.status = 'Uploading...';
+
+        const chunkSize = 64 * 1024;
+        const totalChunks = Math.max(1, Math.ceil(fileToUpload.size / chunkSize));
+        const msgId = this.next_msg_id();
+
+        const uploadStart = new Promise<number>((resolve, reject) => {
+            const timeout = window.setTimeout(() => {
+                this.pendingUploadStarts.delete(msgId);
+                reject(new Error('Upload start timeout'));
+            }, 10_000);
+
+            this.pendingUploadStarts.set(msgId, {
+                timeout,
+                resolve,
+                reject,
+            });
+        });
+
+        try {
+            this.channel.send_sftp_upload_start(
+                this.nodeId,
+                this.session_id,
+                fileToUpload.name,
+                this.current_dir,
+                totalChunks,
+                BigInt(fileToUpload.size),
+                msgId,
+            );
+
+            const uploadId = await uploadStart;
+            let uploadedBytes = 0;
+            const startedAt = performance.now();
+
+            for (let chunkIndex = 0; chunkIndex < totalChunks; chunkIndex += 1) {
+                if (uploadToken !== this.activeUploadToken) {
+                    throw new Error('Upload cancelled');
+                }
+
+                const start = chunkIndex * chunkSize;
+                const end = Math.min(start + chunkSize, fileToUpload.size);
+                const chunkBuffer = new Uint8Array(await fileToUpload.slice(start, end).arrayBuffer());
+
+                await new Promise<void>((resolve, reject) => {
+                    const key = `${uploadId}_${chunkIndex}`;
+                    const timeout = window.setTimeout(() => {
+                        this.pendingUploadAcks.delete(key);
+                        reject(new Error(`Upload chunk ${chunkIndex + 1} timed out`));
+                    }, 30_000);
+
+                    this.pendingUploadAcks.set(key, {
+                        timeout,
+                        resolve,
+                        reject,
+                    });
+
+                    this.channel.send_sftp_upload_chunk(
+                        this.nodeId,
+                        this.session_id!,
+                        uploadId,
+                        chunkIndex,
+                        chunkBuffer.length,
+                        chunkBuffer,
+                        null,
+                    );
+                });
+
+                uploadedBytes += chunkBuffer.length;
+                this.update_upload_progress(uploadedBytes, fileToUpload.size, startedAt);
+            }
+
+            this.upload_progress = 100;
+            this.upload_finished = true;
+            this.status = 'Connected';
+            this.refresh_directory();
+        } catch (err) {
+            if ((err as Error).message !== 'Upload cancelled') {
+                this.show_error = true;
+                this.error_message = err instanceof Error ? err.message : 'Upload failed';
+            }
+            this.upload_finished = false;
+            this.status = 'Connected';
+        }
     }
 
     private handle_tunnel_data(web: ProtocolMessageWebTunnelData) {
@@ -434,6 +931,18 @@ export class PhirepassSftpClient {
                 case ProtocolMessageType.SFTPListItems:
                     this.handle_sftp_list_items(web);
                     break;
+                case ProtocolMessageType.SFTPUploadStartResponse:
+                    this.handle_upload_start_response(web);
+                    break;
+                case ProtocolMessageType.SFTPUploadChunkAck:
+                    this.handle_upload_chunk_ack(web);
+                    break;
+                case ProtocolMessageType.SFTPDownloadStartResponse:
+                    this.handle_download_start_response(web);
+                    break;
+                case ProtocolMessageType.SFTPDownloadChunk:
+                    this.handle_download_chunk(web);
+                    break;
                 default:
                     console.warn('Unhandled protocol message type:', web);
             }
@@ -441,6 +950,14 @@ export class PhirepassSftpClient {
     }
 
     private close_comms() {
+        this.cancel_active_upload();
+        this.cancel_active_download();
+        this.clear_pending_operations();
+
+        if (!this.channel) {
+            return;
+        }
+
         this.channel.stop_heartbeat();
         this.channel.disconnect();
     }
@@ -495,6 +1012,15 @@ export class PhirepassSftpClient {
         this.show_login_screen_username = false;
         this.show_login_screen_password = false;
         this.show_login_screen = false;
+        this.show_upload_modal = false;
+        this.show_download_modal = false;
+        this.show_delete_modal = false;
+        this.upload_progress = 0;
+        this.download_progress = 0;
+        this.upload_finished = false;
+        this.download_finished = false;
+        this.delete_loading = false;
+        this.delete_file_name = '';
         this.version = '';
         this.status = 'Disconnected';
     }
@@ -502,22 +1028,11 @@ export class PhirepassSftpClient {
     private on_file_row_action(item: SFTPListItem, event: MouseEvent) {
         event.preventDefault();
         event.stopPropagation();
-        this.selected_item = item;
-        this.download_file_name = item.name;
-        this.download_progress = 0;
-        this.download_finished = false;
-        this.show_download_modal = true;
+        if (item.kind !== 'File') {
+            return;
+        }
 
-        this.clear_download_progress();
-        this.downloadProgressHandle = window.setInterval(() => {
-            if (this.download_progress >= 100) {
-                this.clear_download_progress();
-                this.download_finished = true;
-                return;
-            }
-
-            this.download_progress = Math.min(100, this.download_progress + 5);
-        }, 180);
+        void this.start_download(item);
     }
 
     private on_file_delete_action(item: SFTPListItem, event: MouseEvent) {
@@ -538,6 +1053,7 @@ export class PhirepassSftpClient {
         this.show_delete_modal = false;
         this.delete_file_name = '';
         this.delete_loading = false;
+        this.refresh_directory();
     }
 
     private confirm_delete() {
@@ -545,22 +1061,57 @@ export class PhirepassSftpClient {
             return;
         }
 
-        this.delete_loading = true;
-        const deletingFileName = this.delete_file_name;
-
-        this.clear_delete_loading_timeout();
-        this.deleteLoadingTimeout = window.setTimeout(() => {
+        if (!this.session_id || !this.selected_item) {
             this.show_delete_modal = false;
-            this.delete_loading = false;
-            this.show_error = true;
-            this.error_message = `Delete for "${deletingFileName}" is not available yet.`;
-            window.setTimeout(() => {
-                this.show_error = false;
-            }, 2_000);
+            return;
+        }
 
-            this.delete_file_name = '';
-            this.deleteLoadingTimeout = undefined;
-        }, 1_100);
+        const fileToDelete = this.selected_item.name;
+
+        this.delete_loading = true;
+        this.status = 'Deleting...';
+        this.show_error = false;
+
+        this.stop_delete_polling();
+
+        const msgId = this.next_msg_id();
+        this.pendingDelete = {
+            filename: fileToDelete,
+            msgId,
+            startedAt: Date.now(),
+        };
+
+        const pollOnce = () => {
+            if (!this.pendingDelete) {
+                return;
+            }
+
+            const elapsed = Date.now() - this.pendingDelete.startedAt;
+            if (elapsed >= 30_000) {
+                this.stop_delete_polling();
+                this.delete_loading = false;
+                this.show_delete_modal = false;
+                this.show_error = true;
+                this.error_message = `Delete timed out for "${fileToDelete}".`;
+                this.status = 'Connected';
+                return;
+            }
+
+            if (this.session_id) {
+                this.channel.send_sftp_list_data(this.nodeId, this.session_id, this.current_dir);
+            }
+        };
+
+        pollOnce();
+        this.pendingDelete.interval = window.setInterval(pollOnce, 2_500);
+
+        this.channel.send_sftp_delete(
+            this.nodeId,
+            this.session_id,
+            this.current_dir,
+            fileToDelete,
+            msgId,
+        );
     }
 
     private open_upload_picker() {
@@ -575,39 +1126,26 @@ export class PhirepassSftpClient {
             return;
         }
 
-        this.upload_file_name = selectedFile.name;
-        this.upload_progress = 0;
-        this.upload_finished = false;
-        this.show_upload_modal = true;
-
-        this.clear_upload_progress();
-        this.uploadProgressHandle = window.setInterval(() => {
-            if (this.upload_progress >= 100) {
-                this.clear_upload_progress();
-                this.upload_finished = true;
-                return;
-            }
-
-            this.upload_progress = Math.min(100, this.upload_progress + 5);
-        }, 180);
-
+        void this.upload_file(selectedFile);
         input.value = '';
     }
 
     private cancel_upload() {
-        this.clear_upload_progress();
+        this.cancel_active_upload();
         this.show_upload_modal = false;
-        this.upload_progress = 0;
         this.upload_file_name = '';
-        this.upload_finished = false;
+        this.upload_speed = '--';
+        this.status = 'Connected';
+        this.refresh_directory();
     }
 
     private cancel_download() {
-        this.clear_download_progress();
+        this.cancel_active_download();
         this.show_download_modal = false;
-        this.download_progress = 0;
         this.download_file_name = '';
-        this.download_finished = false;
+        this.download_speed = '--';
+        this.status = 'Connected';
+        this.refresh_directory();
     }
 
     private is_selected(item: SFTPListItem): boolean {
@@ -641,10 +1179,6 @@ export class PhirepassSftpClient {
         this.selected_item = null;
 
         this.channel.send_sftp_list_data(this.nodeId, this.session_id!, path);
-    }
-
-    private get_full_path(item: SFTPListItem): string {
-        return [item.path, item.name].join('/');
     }
 
     private format_size(size: number | undefined): string {
@@ -863,10 +1397,6 @@ export class PhirepassSftpClient {
                         {this.show_error && <div class="error">{this.error_message}</div>}
                     </main>
                     <footer>
-                        <section class="status">
-                            <span>{this.status}</span>
-                            {this.selected_item && <span class="selected-item">{this.get_full_path(this.selected_item)}</span>}
-                        </section>
                         <section class="version">{this.version ? `Version: ${this.version}` : ''}</section>
                     </footer>
                 </section>
@@ -928,7 +1458,10 @@ export class PhirepassSftpClient {
                             <div class="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={this.upload_progress}>
                                 <div class="progress-fill" style={{ width: `${this.upload_progress}%` }}></div>
                             </div>
-                            <div class="progress-value">{this.upload_progress}%</div>
+                            <div class="progress-meta">
+                                <div class="progress-speed">{this.upload_speed}</div>
+                                <div class="progress-value">{this.format_percent(this.upload_progress)}</div>
+                            </div>
                             <button
                                 type="button"
                                 class={{
@@ -953,7 +1486,10 @@ export class PhirepassSftpClient {
                             <div class="progress-track" role="progressbar" aria-valuemin={0} aria-valuemax={100} aria-valuenow={this.download_progress}>
                                 <div class="progress-fill" style={{ width: `${this.download_progress}%` }}></div>
                             </div>
-                            <div class="progress-value">{this.download_progress}%</div>
+                            <div class="progress-meta">
+                                <div class="progress-speed">{this.download_speed}</div>
+                                <div class="progress-value">{this.format_percent(this.download_progress)}</div>
+                            </div>
                             <button
                                 type="button"
                                 class={{
@@ -976,7 +1512,11 @@ export class PhirepassSftpClient {
                             <div class="title">Delete File</div>
                             <div class="message">{this.delete_loading ? 'Deleting file...' : 'Are you sure you want to delete this file?'}</div>
                             <div class="file-name" title={this.delete_file_name}>{this.delete_file_name}</div>
-                            {this.delete_loading && <div class="delete-loading-bar" aria-hidden="true"></div>}
+                            {this.delete_loading &&
+                                <div class="delete-loader" aria-hidden="true">
+                                    <span class="spinner"></span>
+                                </div>
+                            }
                             <div class="modal-actions">
                                 <button type="button" class="btn secondary" onClick={() => this.cancel_delete()} disabled={this.delete_loading}>Cancel</button>
                                 <button type="button" class="btn destructive" onClick={() => this.confirm_delete()} disabled={this.delete_loading}>{this.delete_loading ? 'Deleting...' : 'Delete'}</button>
