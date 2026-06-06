@@ -53,7 +53,6 @@ type ActiveDownload = {
     total_chunks: number;
     total_size: number;
     download_id: number;
-    nextChunkToRequest: number;
     startTime: number;
 };
 
@@ -632,22 +631,6 @@ export class PhirepassSftpClient {
         this.pendingDownloadStarts.delete(web.msg_id);
     }
 
-    private request_next_download_chunk(msgId: number) {
-        const download = this.activeDownloads.get(msgId);
-        if (!download || !this.session_id) {
-            return;
-        }
-
-        this.channel.send_sftp_download_chunk(
-            this.nodeId,
-            this.session_id,
-            download.download_id,
-            download.nextChunkToRequest,
-            msgId,
-        );
-        download.nextChunkToRequest += 1;
-    }
-
     private finalize_download(msgId: number) {
         const download = this.activeDownloads.get(msgId);
         if (!download) {
@@ -686,7 +669,7 @@ export class PhirepassSftpClient {
         }
 
         const download = this.activeDownloads.get(web.msg_id);
-        if (!download) {
+        if (!download || !this.session_id) {
             return;
         }
 
@@ -696,12 +679,18 @@ export class PhirepassSftpClient {
         const receivedBytes = Array.from(download.chunks.values()).reduce((sum, data) => sum + data.length, 0);
         this.update_download_progress(receivedBytes, download.total_size, download.startTime);
 
+        // Pipeline ACK: advance the agent's sliding window so it can push the next
+        // batch of chunks without waiting for an explicit per-chunk request.
+        this.channel.send_sftp_download_ack(
+            this.nodeId,
+            this.session_id,
+            download.download_id,
+            web.chunk.chunk_index,
+        );
+
         if (download.chunks.size >= download.total_chunks) {
             this.finalize_download(web.msg_id);
-            return;
         }
-
-        this.request_next_download_chunk(web.msg_id);
     }
 
     private async start_download(item: SFTPListItem) {
@@ -725,7 +714,6 @@ export class PhirepassSftpClient {
             total_chunks: 0,
             total_size: 0,
             download_id: 0,
-            nextChunkToRequest: 0,
             startTime: Date.now(),
         });
 
@@ -754,9 +742,8 @@ export class PhirepassSftpClient {
             download.download_id = download_id;
             download.total_chunks = total_chunks;
             download.total_size = total_size;
-            download.nextChunkToRequest = 0;
-
-            this.request_next_download_chunk(msgId);
+            // Pipelined: agent pushes chunks immediately after SFTPDownloadStartResponse;
+            // no explicit per-chunk request is needed to start the flow.
         } catch (err) {
             this.activeDownloads.delete(msgId);
             if (this.activeDownloadMsgId === msgId) {
