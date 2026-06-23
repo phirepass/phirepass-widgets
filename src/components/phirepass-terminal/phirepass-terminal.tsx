@@ -123,6 +123,9 @@ export class PhirepassTerminal {
     nodeId!: string;
 
     @Prop()
+    serviceId!: string;
+
+    @Prop()
     token!: string;
 
     @Watch('nodeId')
@@ -439,7 +442,7 @@ export class PhirepassTerminal {
     private handle_auth_success(_auth_: ProtocolMessageWebAuthSuccess) {
         this.clear_creds_buffer();
         this.channel.start_heartbeat(this.heartbeatInterval <= 15_000 ? 30_000 : this.heartbeatInterval);
-        this.channel.open_ssh_tunnel(this.nodeId);
+        this.channel.open_ssh_tunnel(this.nodeId, this.serviceId);
     }
 
     private handle_tunnel_opened(web: ProtocolMessageWebTunnelOpened) {
@@ -554,7 +557,7 @@ export class PhirepassTerminal {
 
         this.inputMode = InputMode.Default;
 
-        this.channel.open_ssh_tunnel(this.nodeId, username);
+        this.channel.open_ssh_tunnel(this.nodeId, this.serviceId, username);
     }
 
     private handle_password_input(data: string) {
@@ -601,7 +604,7 @@ export class PhirepassTerminal {
 
         // Assuming there's a method to submit password to the channel
         // You may need to adjust this based on your actual API
-        this.channel.open_ssh_tunnel(this.nodeId, this.usernameBuffer.trim(), password);
+        this.channel.open_ssh_tunnel(this.nodeId, this.serviceId, this.usernameBuffer.trim(), password);
 
         // Clear sensitive data
         this.passwordBuffer = "";

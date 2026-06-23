@@ -41,6 +41,7 @@ export namespace Components {
           * @default 443
          */
         "serverPort": number;
+        "serviceId": string;
         "token": string;
     }
     interface PhirepassTerminal {
@@ -62,6 +63,7 @@ export namespace Components {
           * @default 443
          */
         "serverPort": number;
+        "serviceId": string;
         /**
           * @default {         // Terminal identification         termName: 'xterm-256color',          // Rendering         rendererType: 'canvas', // Better performance         allowTransparency: false,          fontFamily:             '"Berkeley Mono", "Fira Code", "SFMono-Regular", Menlo, monospace',         fontSize: 12,         // fontWeight: 'normal',         // fontWeightBold: 'bold',         letterSpacing: 0,         lineHeight: 1.0,          allowProposedApi: true, // needed for bracketed paste          // Cursor         cursorBlink: true,         // cursorStyle: 'block',         cursorWidth: 1,          // Colors         theme: {             background: "#0b1021",             foreground: "#e2e8f0",             cursor: "#67e8f9",         },          // Scrolling         scrollback: 10000,         fastScrollModifier: 'shift',         fastScrollSensitivity: 5,          // Behavior         bellStyle: 'sound', // or 'none' if you prefer         convertEol: false, // true to treat \n as \r\n         disableStdin: false,          // Selection         rightClickSelectsWord: true,          // Performance         drawBoldTextInBrightColors: true,         minimumContrastRatio: 1,          // Advanced         windowsMode: false, // Important for Linux         macOptionIsMeta: false,         altClickMovesCursor: true     }
          */
@@ -154,6 +156,7 @@ declare namespace LocalJSX {
           * @default 443
          */
         "serverPort"?: number;
+        "serviceId": string;
         "token": string;
     }
     interface PhirepassTerminal {
@@ -176,6 +179,7 @@ declare namespace LocalJSX {
           * @default 443
          */
         "serverPort"?: number;
+        "serviceId": string;
         /**
           * @default {         // Terminal identification         termName: 'xterm-256color',          // Rendering         rendererType: 'canvas', // Better performance         allowTransparency: false,          fontFamily:             '"Berkeley Mono", "Fira Code", "SFMono-Regular", Menlo, monospace',         fontSize: 12,         // fontWeight: 'normal',         // fontWeightBold: 'bold',         letterSpacing: 0,         lineHeight: 1.0,          allowProposedApi: true, // needed for bracketed paste          // Cursor         cursorBlink: true,         // cursorStyle: 'block',         cursorWidth: 1,          // Colors         theme: {             background: "#0b1021",             foreground: "#e2e8f0",             cursor: "#67e8f9",         },          // Scrolling         scrollback: 10000,         fastScrollModifier: 'shift',         fastScrollSensitivity: 5,          // Behavior         bellStyle: 'sound', // or 'none' if you prefer         convertEol: false, // true to treat \n as \r\n         disableStdin: false,          // Selection         rightClickSelectsWord: true,          // Performance         drawBoldTextInBrightColors: true,         minimumContrastRatio: 1,          // Advanced         windowsMode: false, // Important for Linux         macOptionIsMeta: false,         altClickMovesCursor: true     }
          */
@@ -192,6 +196,7 @@ declare namespace LocalJSX {
         "allowInsecure": boolean;
         "heartbeatInterval": number;
         "nodeId": string;
+        "serviceId": string;
         "token": string;
         "serverId": string;
     }
@@ -201,13 +206,14 @@ declare namespace LocalJSX {
         "allowInsecure": boolean;
         "heartbeatInterval": number;
         "nodeId": string;
+        "serviceId": string;
         "token": string;
         "serverId": string;
     }
 
     interface IntrinsicElements {
-        "phirepass-sftp-client": Omit<PhirepassSftpClient, keyof PhirepassSftpClientAttributes> & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes]?: PhirepassSftpClient[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `attr:${K}`]?: PhirepassSftpClientAttributes[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `prop:${K}`]?: PhirepassSftpClient[K] } & OneOf<"nodeId", PhirepassSftpClient["nodeId"], PhirepassSftpClientAttributes["nodeId"]> & OneOf<"token", PhirepassSftpClient["token"], PhirepassSftpClientAttributes["token"]>;
-        "phirepass-terminal": Omit<PhirepassTerminal, keyof PhirepassTerminalAttributes> & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes]?: PhirepassTerminal[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `attr:${K}`]?: PhirepassTerminalAttributes[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `prop:${K}`]?: PhirepassTerminal[K] } & OneOf<"nodeId", PhirepassTerminal["nodeId"], PhirepassTerminalAttributes["nodeId"]> & OneOf<"token", PhirepassTerminal["token"], PhirepassTerminalAttributes["token"]>;
+        "phirepass-sftp-client": Omit<PhirepassSftpClient, keyof PhirepassSftpClientAttributes> & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes]?: PhirepassSftpClient[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `attr:${K}`]?: PhirepassSftpClientAttributes[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `prop:${K}`]?: PhirepassSftpClient[K] } & OneOf<"nodeId", PhirepassSftpClient["nodeId"], PhirepassSftpClientAttributes["nodeId"]> & OneOf<"serviceId", PhirepassSftpClient["serviceId"], PhirepassSftpClientAttributes["serviceId"]> & OneOf<"token", PhirepassSftpClient["token"], PhirepassSftpClientAttributes["token"]>;
+        "phirepass-terminal": Omit<PhirepassTerminal, keyof PhirepassTerminalAttributes> & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes]?: PhirepassTerminal[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `attr:${K}`]?: PhirepassTerminalAttributes[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `prop:${K}`]?: PhirepassTerminal[K] } & OneOf<"nodeId", PhirepassTerminal["nodeId"], PhirepassTerminalAttributes["nodeId"]> & OneOf<"serviceId", PhirepassTerminal["serviceId"], PhirepassTerminalAttributes["serviceId"]> & OneOf<"token", PhirepassTerminal["token"], PhirepassTerminalAttributes["token"]>;
     }
 }
 export { LocalJSX as JSX };

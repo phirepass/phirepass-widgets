@@ -116,6 +116,9 @@ export class PhirepassSftpClient {
     nodeId!: string;
 
     @Prop()
+    serviceId!: string;
+
+    @Prop()
     token!: string;
 
     @Watch('nodeId')
@@ -541,7 +544,7 @@ export class PhirepassSftpClient {
         this.clear_creds_buffer();
         this.version = auth.version;
         this.channel.start_heartbeat(this.heartbeatInterval <= 15_000 ? 30_000 : this.heartbeatInterval);
-        this.channel.open_sftp_tunnel(this.nodeId);
+        this.channel.open_sftp_tunnel(this.nodeId, this.serviceId);
         this.status = 'Connected';
     }
 
@@ -1405,7 +1408,7 @@ export class PhirepassSftpClient {
                                 password = formData.get('password') as string;
                             }
 
-                            this.channel.open_sftp_tunnel(this.nodeId, username, password);
+                            this.channel.open_sftp_tunnel(this.nodeId, this.serverId, username, password);
 
                             this.show_login_screen_username = false;
                             this.show_login_screen_password = false;
