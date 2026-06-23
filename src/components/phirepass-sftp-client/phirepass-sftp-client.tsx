@@ -1408,7 +1408,7 @@ export class PhirepassSftpClient {
                                 password = formData.get('password') as string;
                             }
 
-                            this.channel.open_sftp_tunnel(this.nodeId, this.serverId, username, password);
+                            this.channel.open_sftp_tunnel(this.nodeId, this.serviceId, username, password);
 
                             this.show_login_screen_username = false;
                             this.show_login_screen_password = false;
