@@ -2,6 +2,16 @@ import { Config } from '@stencil/core';
 
 export const config: Config = {
     namespace: 'phirepass-widgets',
+    // noVNC 1.7 is ESM-only and uses a top-level await (core/util/browser.js,
+    // WebCodecs H.264 detection), which cannot be represented in the CommonJS
+    // output target. Leaving it external keeps it out of the bundles entirely;
+    // `phirepass-vnc` imports it dynamically, so it is only fetched when a VNC
+    // session actually opens.
+    rollupConfig: {
+        inputOptions: {
+            external: ['@novnc/novnc'],
+        },
+    },
     outputTargets: [
         {
             type: 'dist',

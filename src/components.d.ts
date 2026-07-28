@@ -70,6 +70,38 @@ export namespace Components {
         "terminalOptions": { termName: string; rendererType: string; allowTransparency: boolean; fontFamily: string; fontSize: number; letterSpacing: number; lineHeight: number; allowProposedApi: boolean; cursorBlink: boolean; cursorWidth: number; theme: { background: string; foreground: string; cursor: string; }; scrollback: number; fastScrollModifier: string; fastScrollSensitivity: number; bellStyle: string; convertEol: boolean; disableStdin: boolean; rightClickSelectsWord: boolean; drawBoldTextInBrightColors: boolean; minimumContrastRatio: number; windowsMode: boolean; macOptionIsMeta: boolean; altClickMovesCursor: boolean; };
         "token": string;
     }
+    interface PhirepassVnc {
+        /**
+          * @default false
+         */
+        "allowInsecure": boolean;
+        /**
+          * @default 30_000
+         */
+        "heartbeatInterval": number;
+        "nodeId": string;
+        /**
+          * Asks the VNC server to match its resolution to the widget size.
+          * @default true
+         */
+        "resizeSession": boolean;
+        /**
+          * Scales the remote desktop to fit the widget instead of showing scrollbars.
+          * @default true
+         */
+        "scaleViewport": boolean;
+        /**
+          * @default "phirepass.com"
+         */
+        "serverHost": string;
+        "serverId"?: string;
+        /**
+          * @default 443
+         */
+        "serverPort": number;
+        "serviceId": string;
+        "token": string;
+    }
 }
 export interface PhirepassSftpClientCustomEvent<T> extends CustomEvent<T> {
     detail: T;
@@ -78,6 +110,10 @@ export interface PhirepassSftpClientCustomEvent<T> extends CustomEvent<T> {
 export interface PhirepassTerminalCustomEvent<T> extends CustomEvent<T> {
     detail: T;
     target: HTMLPhirepassTerminalElement;
+}
+export interface PhirepassVncCustomEvent<T> extends CustomEvent<T> {
+    detail: T;
+    target: HTMLPhirepassVncElement;
 }
 declare global {
     interface HTMLPhirepassSftpClientElementEventMap {
@@ -115,9 +151,27 @@ declare global {
         prototype: HTMLPhirepassTerminalElement;
         new (): HTMLPhirepassTerminalElement;
     };
+    interface HTMLPhirepassVncElementEventMap {
+        "connectionStateChanged": [ConnectionState, unknown?];
+    }
+    interface HTMLPhirepassVncElement extends Components.PhirepassVnc, HTMLStencilElement {
+        addEventListener<K extends keyof HTMLPhirepassVncElementEventMap>(type: K, listener: (this: HTMLPhirepassVncElement, ev: PhirepassVncCustomEvent<HTMLPhirepassVncElementEventMap[K]>) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
+        removeEventListener<K extends keyof HTMLPhirepassVncElementEventMap>(type: K, listener: (this: HTMLPhirepassVncElement, ev: PhirepassVncCustomEvent<HTMLPhirepassVncElementEventMap[K]>) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
+    }
+    var HTMLPhirepassVncElement: {
+        prototype: HTMLPhirepassVncElement;
+        new (): HTMLPhirepassVncElement;
+    };
     interface HTMLElementTagNameMap {
         "phirepass-sftp-client": HTMLPhirepassSftpClientElement;
         "phirepass-terminal": HTMLPhirepassTerminalElement;
+        "phirepass-vnc": HTMLPhirepassVncElement;
     }
 }
 declare namespace LocalJSX {
@@ -186,6 +240,39 @@ declare namespace LocalJSX {
         "terminalOptions"?: { termName: string; rendererType: string; allowTransparency: boolean; fontFamily: string; fontSize: number; letterSpacing: number; lineHeight: number; allowProposedApi: boolean; cursorBlink: boolean; cursorWidth: number; theme: { background: string; foreground: string; cursor: string; }; scrollback: number; fastScrollModifier: string; fastScrollSensitivity: number; bellStyle: string; convertEol: boolean; disableStdin: boolean; rightClickSelectsWord: boolean; drawBoldTextInBrightColors: boolean; minimumContrastRatio: number; windowsMode: boolean; macOptionIsMeta: boolean; altClickMovesCursor: boolean; };
         "token": string;
     }
+    interface PhirepassVnc {
+        /**
+          * @default false
+         */
+        "allowInsecure"?: boolean;
+        /**
+          * @default 30_000
+         */
+        "heartbeatInterval"?: number;
+        "nodeId": string;
+        "onConnectionStateChanged"?: (event: PhirepassVncCustomEvent<[ConnectionState, unknown?]>) => void;
+        /**
+          * Asks the VNC server to match its resolution to the widget size.
+          * @default true
+         */
+        "resizeSession"?: boolean;
+        /**
+          * Scales the remote desktop to fit the widget instead of showing scrollbars.
+          * @default true
+         */
+        "scaleViewport"?: boolean;
+        /**
+          * @default "phirepass.com"
+         */
+        "serverHost"?: string;
+        "serverId"?: string;
+        /**
+          * @default 443
+         */
+        "serverPort"?: number;
+        "serviceId": string;
+        "token": string;
+    }
 
     interface PhirepassSftpClientAttributes {
         "name": string;
@@ -210,10 +297,23 @@ declare namespace LocalJSX {
         "token": string;
         "serverId": string;
     }
+    interface PhirepassVncAttributes {
+        "serverHost": string;
+        "serverPort": number;
+        "allowInsecure": boolean;
+        "heartbeatInterval": number;
+        "nodeId": string;
+        "serviceId": string;
+        "token": string;
+        "scaleViewport": boolean;
+        "resizeSession": boolean;
+        "serverId": string;
+    }
 
     interface IntrinsicElements {
         "phirepass-sftp-client": Omit<PhirepassSftpClient, keyof PhirepassSftpClientAttributes> & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes]?: PhirepassSftpClient[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `attr:${K}`]?: PhirepassSftpClientAttributes[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `prop:${K}`]?: PhirepassSftpClient[K] } & OneOf<"nodeId", PhirepassSftpClient["nodeId"], PhirepassSftpClientAttributes["nodeId"]> & OneOf<"serviceId", PhirepassSftpClient["serviceId"], PhirepassSftpClientAttributes["serviceId"]> & OneOf<"token", PhirepassSftpClient["token"], PhirepassSftpClientAttributes["token"]>;
         "phirepass-terminal": Omit<PhirepassTerminal, keyof PhirepassTerminalAttributes> & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes]?: PhirepassTerminal[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `attr:${K}`]?: PhirepassTerminalAttributes[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `prop:${K}`]?: PhirepassTerminal[K] } & OneOf<"nodeId", PhirepassTerminal["nodeId"], PhirepassTerminalAttributes["nodeId"]> & OneOf<"serviceId", PhirepassTerminal["serviceId"], PhirepassTerminalAttributes["serviceId"]> & OneOf<"token", PhirepassTerminal["token"], PhirepassTerminalAttributes["token"]>;
+        "phirepass-vnc": Omit<PhirepassVnc, keyof PhirepassVncAttributes> & { [K in keyof PhirepassVnc & keyof PhirepassVncAttributes]?: PhirepassVnc[K] } & { [K in keyof PhirepassVnc & keyof PhirepassVncAttributes as `attr:${K}`]?: PhirepassVncAttributes[K] } & { [K in keyof PhirepassVnc & keyof PhirepassVncAttributes as `prop:${K}`]?: PhirepassVnc[K] } & OneOf<"nodeId", PhirepassVnc["nodeId"], PhirepassVncAttributes["nodeId"]> & OneOf<"serviceId", PhirepassVnc["serviceId"], PhirepassVncAttributes["serviceId"]> & OneOf<"token", PhirepassVnc["token"], PhirepassVncAttributes["token"]>;
     }
 }
 export { LocalJSX as JSX };
@@ -222,6 +322,7 @@ declare module "@stencil/core" {
         interface IntrinsicElements {
             "phirepass-sftp-client": LocalJSX.IntrinsicElements["phirepass-sftp-client"] & JSXBase.HTMLAttributes<HTMLPhirepassSftpClientElement>;
             "phirepass-terminal": LocalJSX.IntrinsicElements["phirepass-terminal"] & JSXBase.HTMLAttributes<HTMLPhirepassTerminalElement>;
+            "phirepass-vnc": LocalJSX.IntrinsicElements["phirepass-vnc"] & JSXBase.HTMLAttributes<HTMLPhirepassVncElement>;
         }
     }
 }
