@@ -2,14 +2,14 @@ import { Config } from '@stencil/core';
 
 export const config: Config = {
     namespace: 'phirepass-widgets',
-    // noVNC 1.7 is ESM-only and uses a top-level await (core/util/browser.js,
-    // WebCodecs H.264 detection), which cannot be represented in the CommonJS
-    // output target. Leaving it external keeps it out of the bundles entirely;
-    // `phirepass-vnc` imports it dynamically, so it is only fetched when a VNC
-    // session actually opens.
+    // IronRDP ships as ESM only and embeds a ~4.5 MB wasm payload as a data
+    // URI, which both bloats and breaks the CommonJS output target. Leaving the
+    // packages external keeps them out of the bundles entirely; `phirepass-rdp`
+    // imports them dynamically, so they are only fetched when an RDP session
+    // actually opens.
     rollupConfig: {
         inputOptions: {
-            external: ['@novnc/novnc'],
+            external: ['@devolutions/iron-remote-desktop', '@devolutions/iron-remote-desktop-rdp'],
         },
     },
     outputTargets: [

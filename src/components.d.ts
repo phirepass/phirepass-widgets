@@ -8,6 +8,51 @@ import { HTMLStencilElement, JSXBase } from "@stencil/core/internal";
 import { ConnectionState } from "./common/protocol";
 export { ConnectionState } from "./common/protocol";
 export namespace Components {
+    /**
+     * Remote desktop over RDP.
+     * Unlike the terminal and SFTP widgets this one does not pipe protocol bytes
+     * through the phirepass channel. The channel is used only to authorise the
+     * session; the actual RDP stream runs on a second WebSocket opened by IronRDP's
+     * own client, because that client speaks RDCleanPath and can set neither
+     * headers nor a subprotocol on the socket it opens. See `RDP.md` in
+     * `phirepass-rs` for why the session is split across two sockets.
+     */
+    interface PhirepassRdp {
+        /**
+          * @default false
+         */
+        "allowInsecure": boolean;
+        /**
+          * What to name the host in the CredSSP service principal (`TERMSRV/...`).  The agent dials whatever the node's service settings say, so this is never used for routing. It matters only because some hosts check the SPN, and the browser has no other way to learn the host's real address.
+         */
+        "destination"?: string;
+        /**
+          * @default 30_000
+         */
+        "heartbeatInterval": number;
+        "nodeId": string;
+        "password"?: string;
+        /**
+          * `fit` scales the desktop to the widget, `real` keeps 1:1 pixels.
+          * @default 'fit'
+         */
+        "scale": 'fit' | 'full' | 'real';
+        /**
+          * @default "phirepass.com"
+         */
+        "serverHost": string;
+        "serverId"?: string;
+        /**
+          * @default 443
+         */
+        "serverPort": number;
+        "serviceId": string;
+        "token": string;
+        /**
+          * Credentials for the remote host. When either is missing the widget prompts for both.  They serve two purposes at once: the agent checks them before it authorises the tunnel, and the browser uses them for CredSSP. The agent never logs in with them — it discards them once the tunnel is authorised.
+         */
+        "username"?: string;
+    }
     interface PhirepassSftpClient {
         /**
           * @default false
@@ -70,38 +115,10 @@ export namespace Components {
         "terminalOptions": { termName: string; rendererType: string; allowTransparency: boolean; fontFamily: string; fontSize: number; letterSpacing: number; lineHeight: number; allowProposedApi: boolean; cursorBlink: boolean; cursorWidth: number; theme: { background: string; foreground: string; cursor: string; }; scrollback: number; fastScrollModifier: string; fastScrollSensitivity: number; bellStyle: string; convertEol: boolean; disableStdin: boolean; rightClickSelectsWord: boolean; drawBoldTextInBrightColors: boolean; minimumContrastRatio: number; windowsMode: boolean; macOptionIsMeta: boolean; altClickMovesCursor: boolean; };
         "token": string;
     }
-    interface PhirepassVnc {
-        /**
-          * @default false
-         */
-        "allowInsecure": boolean;
-        /**
-          * @default 30_000
-         */
-        "heartbeatInterval": number;
-        "nodeId": string;
-        /**
-          * Asks the VNC server to match its resolution to the widget size.
-          * @default true
-         */
-        "resizeSession": boolean;
-        /**
-          * Scales the remote desktop to fit the widget instead of showing scrollbars.
-          * @default true
-         */
-        "scaleViewport": boolean;
-        /**
-          * @default "phirepass.com"
-         */
-        "serverHost": string;
-        "serverId"?: string;
-        /**
-          * @default 443
-         */
-        "serverPort": number;
-        "serviceId": string;
-        "token": string;
-    }
+}
+export interface PhirepassRdpCustomEvent<T> extends CustomEvent<T> {
+    detail: T;
+    target: HTMLPhirepassRdpElement;
 }
 export interface PhirepassSftpClientCustomEvent<T> extends CustomEvent<T> {
     detail: T;
@@ -111,11 +128,33 @@ export interface PhirepassTerminalCustomEvent<T> extends CustomEvent<T> {
     detail: T;
     target: HTMLPhirepassTerminalElement;
 }
-export interface PhirepassVncCustomEvent<T> extends CustomEvent<T> {
-    detail: T;
-    target: HTMLPhirepassVncElement;
-}
 declare global {
+    interface HTMLPhirepassRdpElementEventMap {
+        "connectionStateChanged": [ConnectionState, unknown?];
+    }
+    /**
+     * Remote desktop over RDP.
+     * Unlike the terminal and SFTP widgets this one does not pipe protocol bytes
+     * through the phirepass channel. The channel is used only to authorise the
+     * session; the actual RDP stream runs on a second WebSocket opened by IronRDP's
+     * own client, because that client speaks RDCleanPath and can set neither
+     * headers nor a subprotocol on the socket it opens. See `RDP.md` in
+     * `phirepass-rs` for why the session is split across two sockets.
+     */
+    interface HTMLPhirepassRdpElement extends Components.PhirepassRdp, HTMLStencilElement {
+        addEventListener<K extends keyof HTMLPhirepassRdpElementEventMap>(type: K, listener: (this: HTMLPhirepassRdpElement, ev: PhirepassRdpCustomEvent<HTMLPhirepassRdpElementEventMap[K]>) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
+        removeEventListener<K extends keyof HTMLPhirepassRdpElementEventMap>(type: K, listener: (this: HTMLPhirepassRdpElement, ev: PhirepassRdpCustomEvent<HTMLPhirepassRdpElementEventMap[K]>) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
+    }
+    var HTMLPhirepassRdpElement: {
+        prototype: HTMLPhirepassRdpElement;
+        new (): HTMLPhirepassRdpElement;
+    };
     interface HTMLPhirepassSftpClientElementEventMap {
         "maximize": any;
         "connectionStateChanged": [ConnectionState, unknown?];
@@ -151,32 +190,61 @@ declare global {
         prototype: HTMLPhirepassTerminalElement;
         new (): HTMLPhirepassTerminalElement;
     };
-    interface HTMLPhirepassVncElementEventMap {
-        "connectionStateChanged": [ConnectionState, unknown?];
-    }
-    interface HTMLPhirepassVncElement extends Components.PhirepassVnc, HTMLStencilElement {
-        addEventListener<K extends keyof HTMLPhirepassVncElementEventMap>(type: K, listener: (this: HTMLPhirepassVncElement, ev: PhirepassVncCustomEvent<HTMLPhirepassVncElementEventMap[K]>) => any, options?: boolean | AddEventListenerOptions): void;
-        addEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
-        addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
-        addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
-        removeEventListener<K extends keyof HTMLPhirepassVncElementEventMap>(type: K, listener: (this: HTMLPhirepassVncElement, ev: PhirepassVncCustomEvent<HTMLPhirepassVncElementEventMap[K]>) => any, options?: boolean | EventListenerOptions): void;
-        removeEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
-        removeEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
-        removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
-    }
-    var HTMLPhirepassVncElement: {
-        prototype: HTMLPhirepassVncElement;
-        new (): HTMLPhirepassVncElement;
-    };
     interface HTMLElementTagNameMap {
+        "phirepass-rdp": HTMLPhirepassRdpElement;
         "phirepass-sftp-client": HTMLPhirepassSftpClientElement;
         "phirepass-terminal": HTMLPhirepassTerminalElement;
-        "phirepass-vnc": HTMLPhirepassVncElement;
     }
 }
 declare namespace LocalJSX {
     type OneOf<K extends string, PropT, AttrT = PropT> = { [P in K]: PropT } & { [P in `attr:${K}` | `prop:${K}`]?: never } | { [P in `attr:${K}`]: AttrT } & { [P in K | `prop:${K}`]?: never } | { [P in `prop:${K}`]: PropT } & { [P in K | `attr:${K}`]?: never };
 
+    /**
+     * Remote desktop over RDP.
+     * Unlike the terminal and SFTP widgets this one does not pipe protocol bytes
+     * through the phirepass channel. The channel is used only to authorise the
+     * session; the actual RDP stream runs on a second WebSocket opened by IronRDP's
+     * own client, because that client speaks RDCleanPath and can set neither
+     * headers nor a subprotocol on the socket it opens. See `RDP.md` in
+     * `phirepass-rs` for why the session is split across two sockets.
+     */
+    interface PhirepassRdp {
+        /**
+          * @default false
+         */
+        "allowInsecure"?: boolean;
+        /**
+          * What to name the host in the CredSSP service principal (`TERMSRV/...`).  The agent dials whatever the node's service settings say, so this is never used for routing. It matters only because some hosts check the SPN, and the browser has no other way to learn the host's real address.
+         */
+        "destination"?: string;
+        /**
+          * @default 30_000
+         */
+        "heartbeatInterval"?: number;
+        "nodeId": string;
+        "onConnectionStateChanged"?: (event: PhirepassRdpCustomEvent<[ConnectionState, unknown?]>) => void;
+        "password"?: string;
+        /**
+          * `fit` scales the desktop to the widget, `real` keeps 1:1 pixels.
+          * @default 'fit'
+         */
+        "scale"?: 'fit' | 'full' | 'real';
+        /**
+          * @default "phirepass.com"
+         */
+        "serverHost"?: string;
+        "serverId"?: string;
+        /**
+          * @default 443
+         */
+        "serverPort"?: number;
+        "serviceId": string;
+        "token": string;
+        /**
+          * Credentials for the remote host. When either is missing the widget prompts for both.  They serve two purposes at once: the agent checks them before it authorises the tunnel, and the browser uses them for CredSSP. The agent never logs in with them — it discards them once the tunnel is authorised.
+         */
+        "username"?: string;
+    }
     interface PhirepassSftpClient {
         /**
           * @default false
@@ -240,40 +308,21 @@ declare namespace LocalJSX {
         "terminalOptions"?: { termName: string; rendererType: string; allowTransparency: boolean; fontFamily: string; fontSize: number; letterSpacing: number; lineHeight: number; allowProposedApi: boolean; cursorBlink: boolean; cursorWidth: number; theme: { background: string; foreground: string; cursor: string; }; scrollback: number; fastScrollModifier: string; fastScrollSensitivity: number; bellStyle: string; convertEol: boolean; disableStdin: boolean; rightClickSelectsWord: boolean; drawBoldTextInBrightColors: boolean; minimumContrastRatio: number; windowsMode: boolean; macOptionIsMeta: boolean; altClickMovesCursor: boolean; };
         "token": string;
     }
-    interface PhirepassVnc {
-        /**
-          * @default false
-         */
-        "allowInsecure"?: boolean;
-        /**
-          * @default 30_000
-         */
-        "heartbeatInterval"?: number;
+
+    interface PhirepassRdpAttributes {
+        "serverHost": string;
+        "serverPort": number;
+        "allowInsecure": boolean;
+        "heartbeatInterval": number;
         "nodeId": string;
-        "onConnectionStateChanged"?: (event: PhirepassVncCustomEvent<[ConnectionState, unknown?]>) => void;
-        /**
-          * Asks the VNC server to match its resolution to the widget size.
-          * @default true
-         */
-        "resizeSession"?: boolean;
-        /**
-          * Scales the remote desktop to fit the widget instead of showing scrollbars.
-          * @default true
-         */
-        "scaleViewport"?: boolean;
-        /**
-          * @default "phirepass.com"
-         */
-        "serverHost"?: string;
-        "serverId"?: string;
-        /**
-          * @default 443
-         */
-        "serverPort"?: number;
         "serviceId": string;
         "token": string;
+        "username": string;
+        "password": string;
+        "destination": string;
+        "scale": 'fit' | 'full' | 'real';
+        "serverId": string;
     }
-
     interface PhirepassSftpClientAttributes {
         "name": string;
         "description": string;
@@ -297,32 +346,29 @@ declare namespace LocalJSX {
         "token": string;
         "serverId": string;
     }
-    interface PhirepassVncAttributes {
-        "serverHost": string;
-        "serverPort": number;
-        "allowInsecure": boolean;
-        "heartbeatInterval": number;
-        "nodeId": string;
-        "serviceId": string;
-        "token": string;
-        "scaleViewport": boolean;
-        "resizeSession": boolean;
-        "serverId": string;
-    }
 
     interface IntrinsicElements {
+        "phirepass-rdp": Omit<PhirepassRdp, keyof PhirepassRdpAttributes> & { [K in keyof PhirepassRdp & keyof PhirepassRdpAttributes]?: PhirepassRdp[K] } & { [K in keyof PhirepassRdp & keyof PhirepassRdpAttributes as `attr:${K}`]?: PhirepassRdpAttributes[K] } & { [K in keyof PhirepassRdp & keyof PhirepassRdpAttributes as `prop:${K}`]?: PhirepassRdp[K] } & OneOf<"nodeId", PhirepassRdp["nodeId"], PhirepassRdpAttributes["nodeId"]> & OneOf<"serviceId", PhirepassRdp["serviceId"], PhirepassRdpAttributes["serviceId"]> & OneOf<"token", PhirepassRdp["token"], PhirepassRdpAttributes["token"]>;
         "phirepass-sftp-client": Omit<PhirepassSftpClient, keyof PhirepassSftpClientAttributes> & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes]?: PhirepassSftpClient[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `attr:${K}`]?: PhirepassSftpClientAttributes[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `prop:${K}`]?: PhirepassSftpClient[K] } & OneOf<"nodeId", PhirepassSftpClient["nodeId"], PhirepassSftpClientAttributes["nodeId"]> & OneOf<"serviceId", PhirepassSftpClient["serviceId"], PhirepassSftpClientAttributes["serviceId"]> & OneOf<"token", PhirepassSftpClient["token"], PhirepassSftpClientAttributes["token"]>;
         "phirepass-terminal": Omit<PhirepassTerminal, keyof PhirepassTerminalAttributes> & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes]?: PhirepassTerminal[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `attr:${K}`]?: PhirepassTerminalAttributes[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `prop:${K}`]?: PhirepassTerminal[K] } & OneOf<"nodeId", PhirepassTerminal["nodeId"], PhirepassTerminalAttributes["nodeId"]> & OneOf<"serviceId", PhirepassTerminal["serviceId"], PhirepassTerminalAttributes["serviceId"]> & OneOf<"token", PhirepassTerminal["token"], PhirepassTerminalAttributes["token"]>;
-        "phirepass-vnc": Omit<PhirepassVnc, keyof PhirepassVncAttributes> & { [K in keyof PhirepassVnc & keyof PhirepassVncAttributes]?: PhirepassVnc[K] } & { [K in keyof PhirepassVnc & keyof PhirepassVncAttributes as `attr:${K}`]?: PhirepassVncAttributes[K] } & { [K in keyof PhirepassVnc & keyof PhirepassVncAttributes as `prop:${K}`]?: PhirepassVnc[K] } & OneOf<"nodeId", PhirepassVnc["nodeId"], PhirepassVncAttributes["nodeId"]> & OneOf<"serviceId", PhirepassVnc["serviceId"], PhirepassVncAttributes["serviceId"]> & OneOf<"token", PhirepassVnc["token"], PhirepassVncAttributes["token"]>;
     }
 }
 export { LocalJSX as JSX };
 declare module "@stencil/core" {
     export namespace JSX {
         interface IntrinsicElements {
+            /**
+             * Remote desktop over RDP.
+             * Unlike the terminal and SFTP widgets this one does not pipe protocol bytes
+             * through the phirepass channel. The channel is used only to authorise the
+             * session; the actual RDP stream runs on a second WebSocket opened by IronRDP's
+             * own client, because that client speaks RDCleanPath and can set neither
+             * headers nor a subprotocol on the socket it opens. See `RDP.md` in
+             * `phirepass-rs` for why the session is split across two sockets.
+             */
+            "phirepass-rdp": LocalJSX.IntrinsicElements["phirepass-rdp"] & JSXBase.HTMLAttributes<HTMLPhirepassRdpElement>;
             "phirepass-sftp-client": LocalJSX.IntrinsicElements["phirepass-sftp-client"] & JSXBase.HTMLAttributes<HTMLPhirepassSftpClientElement>;
             "phirepass-terminal": LocalJSX.IntrinsicElements["phirepass-terminal"] & JSXBase.HTMLAttributes<HTMLPhirepassTerminalElement>;
-            "phirepass-vnc": LocalJSX.IntrinsicElements["phirepass-vnc"] & JSXBase.HTMLAttributes<HTMLPhirepassVncElement>;
         }
     }
 }

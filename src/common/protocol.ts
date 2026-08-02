@@ -33,6 +33,22 @@ export type ProtocolMessageWebTunnelData = {
     type: 'TunnelData';
 };
 
+/**
+ * Answer to `open_rdp_tunnel`, in place of `TunnelOpened`.
+ *
+ * RDP bytes never cross the control socket: the browser's RDP client opens its
+ * own WebSocket at `/api/web/rdp/{node_id}` and presents `ticket` inside its
+ * RDCleanPath request, which is the only authorisation channel that client has.
+ * The ticket is single-use and expires after 60s, so it has to be handed to the
+ * client promptly.
+ */
+export type ProtocolMessageWebRDPAuthorized = {
+    sid: number;
+    ticket: string;
+    msg_id?: number;
+    type: 'RDPAuthorized';
+};
+
 export type SFTPListItem = {
     name: string;
     path: string;
@@ -103,6 +119,7 @@ export type ProtocolMessage = {
             | ProtocolMessageWebTunnelOpened
             | ProtocolMessageWebTunnelData
             | ProtocolMessageWebTunnelClosed
+            | ProtocolMessageWebRDPAuthorized
             | ProtocolMessageWebSFTPListItems
             | ProtocolMessageWebSFTPDownloadStartResponse
             | ProtocolMessageWebSFTPDownloadChunk
@@ -117,6 +134,7 @@ export enum ProtocolMessageType {
     TunnelOpened = 'TunnelOpened',
     TunnelClosed = 'TunnelClosed',
     TunnelData = 'TunnelData',
+    RDPAuthorized = 'RDPAuthorized',
     SFTPListItems = 'SFTPListItems',
     SFTPDownloadStartResponse = 'SFTPDownloadStartResponse',
     SFTPDownloadChunk = 'SFTPDownloadChunk',
