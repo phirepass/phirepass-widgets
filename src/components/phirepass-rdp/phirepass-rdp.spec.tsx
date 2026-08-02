@@ -63,6 +63,7 @@ function fakeUserInteraction() {
         withProxyAddress: vi.fn((v: string) => ((built.proxyAddress = v), builder)),
         withAuthToken: vi.fn((v: string) => ((built.authToken = v), builder)),
         withExtension: vi.fn((v: unknown) => ((built.extension = v), builder)),
+        withDesktopSize: vi.fn((v: unknown) => ((built.desktopSize = v), builder)),
         build: vi.fn(() => built),
     };
     mocks.builders.push(builder);
@@ -77,6 +78,7 @@ function fakeUserInteraction() {
         connect: vi.fn(async () => session),
         setVisibility: vi.fn(),
         shutdown: vi.fn(),
+        resize: vi.fn(),
     };
 }
 
@@ -180,10 +182,9 @@ describe('phirepass-rdp', () => {
             channel().handlers.protocol(authSuccessFrame());
             channel().handlers.protocol(authorizedFrame());
 
-            const screen = rendered.root.shadowRoot!.querySelector('.screen')!;
-            await waitFor(() => !!screen.querySelector('iron-remote-desktop'), 'the RDP client element');
+            await waitFor(() => !!rendered.root.querySelector('iron-remote-desktop'), 'the RDP client element');
 
-            const element = screen.querySelector('iron-remote-desktop') as HTMLElement & { module: unknown };
+            const element = rendered.root.querySelector('iron-remote-desktop') as HTMLElement & { module: unknown };
             const userInteraction = fakeUserInteraction();
             element.dispatchEvent(new CustomEvent('ready', { detail: { irgUserInteraction: userInteraction } }));
 
@@ -195,6 +196,18 @@ describe('phirepass-rdp', () => {
         it('creates the client with the RDP backend module', async () => {
             const { element } = await reachReadyClient();
             expect(element.module).toEqual({ backend: 'rdp' });
+        });
+
+        // IronRDP forwards keystrokes only while `document.activeElement` is its
+        // own element, and `activeElement` retargets to the outermost shadow
+        // host — so a client mounted inside this widget's shadow root would get
+        // the mouse but never a key. It has to be slotted from the light DOM.
+        it('mounts the client in the light DOM so keystrokes reach it', async () => {
+            const { root, element } = await reachReadyClient();
+
+            expect(element.parentElement).toBe(root);
+            expect(root.shadowRoot!.querySelector('iron-remote-desktop')).toBeFalsy();
+            expect(root.shadowRoot!.querySelector('.screen slot')).toBeTruthy();
         });
 
         // The ticket is the only authorisation the RDP socket ever sees, and the
@@ -233,6 +246,38 @@ describe('phirepass-rdp', () => {
             expect(userInteraction.setVisibility).toHaveBeenCalledWith(true);
         });
 
+        // The desktop is asked for at the widget's size so the host logs in at
+        // the right resolution instead of resizing a moment later.
+        it('asks for a desktop the size of the widget', async () => {
+            const { userInteraction } = await reachReadyClient();
+            const config = (userInteraction.connect as any).mock.calls[0][0];
+
+            expect(config.desktopSize).toEqual({ width: 200, height: 200 });
+        });
+
+        it('leaves the desktop size to the host when dynamic resize is off', async () => {
+            const { userInteraction } = await reachReadyClient({ dynamicResize: false });
+            const config = (userInteraction.connect as any).mock.calls[0][0];
+
+            expect(config.desktopSize).toBeUndefined();
+        });
+
+        // The widget's size is measured only once the client has been made
+        // visible; before that it is a hidden, zero-sized box.
+        it('resizes the remote desktop to the widget once the session is up', async () => {
+            const { userInteraction } = await reachReadyClient();
+
+            await waitFor(() => (userInteraction.resize as any).mock.calls.length > 0, 'the resize request');
+            expect((userInteraction.resize as any).mock.calls[0]).toEqual([200, 200]);
+        });
+
+        it('never resizes the remote desktop when dynamic resize is off', async () => {
+            const { userInteraction } = await reachReadyClient({ dynamicResize: false });
+
+            await waitFor(() => (mocks.sessions[0].run as any).mock.calls.length > 0, 'the session to run');
+            expect(userInteraction.resize).not.toHaveBeenCalled();
+        });
+
         it('reports the reason the session ended', async () => {
             const { root, waitForChanges } = await reachReadyClient();
 
@@ -269,15 +314,14 @@ describe('phirepass-rdp', () => {
             channel().handlers.protocol(authSuccessFrame());
             channel().handlers.protocol(authorizedFrame());
 
-            const screen = rendered.root.shadowRoot!.querySelector('.screen')!;
-            await waitFor(() => !!screen.querySelector('iron-remote-desktop'), 'the RDP client element');
+            await waitFor(() => !!rendered.root.querySelector('iron-remote-desktop'), 'the RDP client element');
 
             const userInteraction = fakeUserInteraction();
             userInteraction.connect = vi.fn(async () => {
                 throw { backtrace: () => 'CredSSP: logon failure', kind: () => 2 };
             }) as any;
 
-            screen
+            rendered.root
                 .querySelector('iron-remote-desktop')!
                 .dispatchEvent(new CustomEvent('ready', { detail: { irgUserInteraction: userInteraction } }));
 
@@ -298,11 +342,10 @@ describe('phirepass-rdp', () => {
             channel().handlers.protocol(authSuccessFrame());
             channel().handlers.protocol(authorizedFrame());
 
-            const screen = rendered.root.shadowRoot!.querySelector('.screen')!;
-            await waitFor(() => !!screen.querySelector('iron-remote-desktop'), 'the RDP client element');
+            await waitFor(() => !!rendered.root.querySelector('iron-remote-desktop'), 'the RDP client element');
 
             const userInteraction = fakeUserInteraction();
-            screen
+            rendered.root
                 .querySelector('iron-remote-desktop')!
                 .dispatchEvent(new CustomEvent('ready', { detail: { irgUserInteraction: userInteraction } }));
             await waitFor(() => (userInteraction.connect as any).mock.calls.length > 0, 'the client to connect');
@@ -315,7 +358,7 @@ describe('phirepass-rdp', () => {
             await rendered.waitForChanges();
 
             expect(userInteraction.shutdown).toHaveBeenCalled();
-            expect(screen.querySelector('iron-remote-desktop')).toBeFalsy();
+            expect(rendered.root.querySelector('iron-remote-desktop')).toBeFalsy();
             expect(channel().disconnect).toHaveBeenCalled();
         });
     });

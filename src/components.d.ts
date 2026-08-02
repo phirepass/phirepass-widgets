@@ -23,13 +23,31 @@ export namespace Components {
          */
         "allowInsecure": boolean;
         /**
+          * While the widget is fullscreen, take the keys the browser normally keeps for itself (Ctrl+W, Ctrl+T, Alt+Tab, F11) and send them to the remote host instead. Escape is taken too, so leaving fullscreen becomes a press-and-hold.  Ordinary keys do not depend on this — they are forwarded whenever the desktop has focus.
+          * @default true
+         */
+        "captureKeyboard": boolean;
+        /**
           * What to name the host in the CredSSP service principal (`TERMSRV/...`).  The agent dials whatever the node's service settings say, so this is never used for routing. It matters only because some hosts check the SPN, and the browser has no other way to learn the host's real address.
          */
         "destination"?: string;
         /**
+          * Ask the remote host to change its resolution to match the widget whenever the widget is resized, so the desktop is rendered at native size rather than scaled.  The host has the last word: this needs the display-control channel, and a host that does not offer it simply keeps the resolution it started with — which `scale` then fits into the widget, as before.
+          * @default true
+         */
+        "dynamicResize": boolean;
+        /**
+          * Directs keystrokes at the remote desktop without waiting for a click.
+         */
+        "focusDesktop": () => Promise<void>;
+        /**
           * @default 30_000
          */
         "heartbeatInterval": number;
+        /**
+          * Whether the browser can hand over its reserved keys at all.
+         */
+        "keyboardLockSupported": () => Promise<boolean>;
         "nodeId": string;
         "password"?: string;
         /**
@@ -47,6 +65,10 @@ export namespace Components {
          */
         "serverPort": number;
         "serviceId": string;
+        /**
+          * Puts the widget in and out of fullscreen, returning the state it settled in. Fullscreen is also what makes `captureKeyboard` possible, so a host app wanting the browser's own shortcuts to reach the remote desktop has to come through here.
+         */
+        "toggleFullscreen": () => Promise<boolean>;
         "token": string;
         /**
           * Credentials for the remote host. When either is missing the widget prompts for both.  They serve two purposes at once: the agent checks them before it authorises the tunnel, and the browser uses them for CredSSP. The agent never logs in with them — it discards them once the tunnel is authorised.
@@ -214,9 +236,19 @@ declare namespace LocalJSX {
          */
         "allowInsecure"?: boolean;
         /**
+          * While the widget is fullscreen, take the keys the browser normally keeps for itself (Ctrl+W, Ctrl+T, Alt+Tab, F11) and send them to the remote host instead. Escape is taken too, so leaving fullscreen becomes a press-and-hold.  Ordinary keys do not depend on this — they are forwarded whenever the desktop has focus.
+          * @default true
+         */
+        "captureKeyboard"?: boolean;
+        /**
           * What to name the host in the CredSSP service principal (`TERMSRV/...`).  The agent dials whatever the node's service settings say, so this is never used for routing. It matters only because some hosts check the SPN, and the browser has no other way to learn the host's real address.
          */
         "destination"?: string;
+        /**
+          * Ask the remote host to change its resolution to match the widget whenever the widget is resized, so the desktop is rendered at native size rather than scaled.  The host has the last word: this needs the display-control channel, and a host that does not offer it simply keeps the resolution it started with — which `scale` then fits into the widget, as before.
+          * @default true
+         */
+        "dynamicResize"?: boolean;
         /**
           * @default 30_000
          */
@@ -321,6 +353,8 @@ declare namespace LocalJSX {
         "password": string;
         "destination": string;
         "scale": 'fit' | 'full' | 'real';
+        "dynamicResize": boolean;
+        "captureKeyboard": boolean;
         "serverId": string;
     }
     interface PhirepassSftpClientAttributes {

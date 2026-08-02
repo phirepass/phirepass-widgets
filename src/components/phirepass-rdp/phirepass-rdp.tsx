@@ -1,7 +1,7 @@
-import { Component, Host, h, Element, Prop, State, Watch } from '@stencil/core';
+import { Component, Host, h, Element, Method, Prop, State, Watch } from '@stencil/core';
 import { Event, EventEmitter } from '@stencil/core';
 import init, { Channel as PhirepassChannel } from 'phirepass-channel';
-import type { UserInteraction } from '@devolutions/iron-remote-desktop';
+import type { DesktopSize, UserInteraction } from '@devolutions/iron-remote-desktop';
 import {
     ConnectionState,
     ProtocolMessage,
@@ -11,6 +11,15 @@ import {
     ProtocolMessageWebRDPAuthorized,
     ProtocolMessageWebTunnelClosed,
 } from '../../common/protocol';
+import { measure_desktop_size, ViewportSync } from './phirepass-rdp.viewport';
+import {
+    focus_client,
+    keyboard_lock_supported,
+    lock_keyboard,
+    shown_fullscreen,
+    toggle_fullscreen,
+    unlock_keyboard,
+} from './phirepass-rdp.keyboard';
 
 /** The `iron-remote-desktop` element configures itself from JS properties. */
 type IronRemoteDesktopElement = HTMLElement & {
@@ -40,11 +49,14 @@ export class PhirepassRdp {
     private containerEl?: HTMLDivElement;
     private ironEl?: IronRemoteDesktopElement;
     private userInteraction?: UserInteraction;
+    private viewport?: ViewportSync;
 
     private domReady = false;
     private runtimeReady = false;
     private connected = false;
     private session_id?: number;
+
+    private readonly onFullscreenChange = () => this.sync_keyboard_lock();
 
     /** Credentials in force for this session, from props or from the prompt. */
     private credentials?: { username: string; password: string };
@@ -110,6 +122,30 @@ export class PhirepassRdp {
     @Prop()
     scale: 'fit' | 'full' | 'real' = 'fit';
 
+    /**
+     * Ask the remote host to change its resolution to match the widget whenever
+     * the widget is resized, so the desktop is rendered at native size rather
+     * than scaled.
+     *
+     * The host has the last word: this needs the display-control channel, and a
+     * host that does not offer it simply keeps the resolution it started with —
+     * which `scale` then fits into the widget, as before.
+     */
+    @Prop()
+    dynamicResize = true;
+
+    /**
+     * While the widget is fullscreen, take the keys the browser normally keeps
+     * for itself (Ctrl+W, Ctrl+T, Alt+Tab, F11) and send them to the remote
+     * host instead. Escape is taken too, so leaving fullscreen becomes a
+     * press-and-hold.
+     *
+     * Ordinary keys do not depend on this — they are forwarded whenever the
+     * desktop has focus.
+     */
+    @Prop()
+    captureKeyboard = true;
+
     @Watch('nodeId')
     onNodeIdChange(newValue?: string, _oldValue?: string) {
         this.reset_session_state();
@@ -155,6 +191,8 @@ export class PhirepassRdp {
     }
 
     async connectedCallback() {
+        document.addEventListener('fullscreenchange', this.onFullscreenChange);
+
         await init();
         this.open_comms();
         this.runtimeReady = true;
@@ -173,10 +211,37 @@ export class PhirepassRdp {
     }
 
     async disconnectedCallback() {
+        document.removeEventListener('fullscreenchange', this.onFullscreenChange);
+
         this.connected = false;
         this.domReady = false;
         this.runtimeReady = false;
         this.close_comms();
+    }
+
+    /**
+     * Puts the widget in and out of fullscreen, returning the state it settled
+     * in. Fullscreen is also what makes `captureKeyboard` possible, so a host
+     * app wanting the browser's own shortcuts to reach the remote desktop has
+     * to come through here.
+     */
+    @Method()
+    async toggleFullscreen(): Promise<boolean> {
+        const fullscreen = await toggle_fullscreen(this.el);
+        this.focus_desktop();
+        return fullscreen;
+    }
+
+    /** Whether the browser can hand over its reserved keys at all. */
+    @Method()
+    async keyboardLockSupported(): Promise<boolean> {
+        return keyboard_lock_supported();
+    }
+
+    /** Directs keystrokes at the remote desktop without waiting for a click. */
+    @Method()
+    async focusDesktop(): Promise<void> {
+        this.focus_desktop();
     }
 
     private try_connect() {
@@ -333,26 +398,51 @@ export class PhirepassRdp {
         });
 
         this.ironEl = element;
-        this.containerEl.appendChild(element);
+        this.mount_client(element);
+    }
+
+    /**
+     * Mounts the client in the widget's **light** DOM, slotted into `.screen`,
+     * rather than as a child of the shadow root.
+     *
+     * This is what makes the keyboard work. IronRDP forwards a key event only
+     * while `document.activeElement` is its own element, and `activeElement`
+     * retargets focus to the outermost shadow host: with the client inside this
+     * widget's shadow root the answer is always `<phirepass-rdp>`, the check
+     * never passes, and not one keystroke reaches the remote host — while the
+     * mouse, which is bound to the canvas directly, works fine. Slotting the
+     * client leaves it in the document tree, so `activeElement` resolves to the
+     * client itself.
+     */
+    private mount_client(element: IronRemoteDesktopElement) {
+        this.el.appendChild(element);
     }
 
     private async start_session(userInteraction: UserInteraction, ticket: string, credssp: unknown) {
         this.userInteraction = userInteraction;
 
-        const config = userInteraction
+        const builder = userInteraction
             .configBuilder()
             .withUsername(this.credentials?.username ?? '')
             .withPassword(this.credentials?.password ?? '')
             .withDestination(this.destination ?? this.nodeId)
             .withProxyAddress(`${this.create_web_socket_endpoint()}/api/web/rdp/${this.nodeId}`)
             .withAuthToken(ticket)
-            .withExtension(credssp)
-            .build();
+            .withExtension(credssp);
+
+        // Asking for the widget's size up front costs nothing and saves the
+        // remote host a resolution change immediately after logon.
+        if (this.dynamicResize) {
+            builder.withDesktopSize(measure_desktop_size(this.el));
+        }
 
         try {
-            const session = await userInteraction.connect(config);
+            const session = await userInteraction.connect(builder.build());
             userInteraction.setVisibility(true);
             this.statusMessage = undefined;
+            this.focus_desktop();
+            this.start_viewport_sync();
+            void this.sync_keyboard_lock();
 
             const termination = await session.run();
             this.statusMessage = termination.reason();
@@ -361,6 +451,57 @@ export class PhirepassRdp {
             this.statusMessage = message;
             this.connectionStateChanged.emit([ConnectionState.Error, err]);
         }
+    }
+
+    /**
+     * Keeps the remote resolution equal to the widget's size.
+     *
+     * `setVisibility(true)` is what gives the widget its layout, so the first
+     * measurement has to happen after it — measuring earlier reads a hidden,
+     * zero-sized box.
+     */
+    private start_viewport_sync() {
+        if (!this.dynamicResize) {
+            return;
+        }
+
+        this.viewport = new ViewportSync((size: DesktopSize) => this.resize_desktop(size));
+        this.viewport.observe(this.el);
+    }
+
+    private stop_viewport_sync() {
+        this.viewport?.disconnect();
+        this.viewport = undefined;
+    }
+
+    private resize_desktop(size: DesktopSize) {
+        try {
+            this.userInteraction?.resize(size.width, size.height);
+        } catch (err) {
+            // A host without the display-control channel refuses the request;
+            // the session carries on at the resolution it already has.
+            console.warn('The remote host would not resize its desktop:', err);
+        }
+    }
+
+    private focus_desktop() {
+        focus_client(this.ironEl);
+    }
+
+    /**
+     * Holds the keyboard lock exactly while the widget is fullscreen. Both
+     * edges matter: the browser drops the lock on its own when fullscreen ends,
+     * but not when the session does, and a lock left behind would keep
+     * swallowing shortcuts for the rest of the page.
+     */
+    private async sync_keyboard_lock() {
+        if (!this.captureKeyboard || !shown_fullscreen(this.el)) {
+            unlock_keyboard();
+            return;
+        }
+
+        await lock_keyboard(this.el);
+        this.focus_desktop();
     }
 
     /** IronRDP rejects with its own error shape rather than an `Error`. */
@@ -385,6 +526,9 @@ export class PhirepassRdp {
     }
 
     private teardown_client() {
+        this.stop_viewport_sync();
+        unlock_keyboard();
+
         if (this.userInteraction) {
             try {
                 this.userInteraction.shutdown();
@@ -414,7 +558,10 @@ export class PhirepassRdp {
     render() {
         return (
             <Host>
-                <div class="screen" ref={(el) => (this.containerEl = el as HTMLDivElement)} />
+                {/* The client is slotted in rather than rendered here — see `mount_client`. */}
+                <div class="screen" ref={(el) => (this.containerEl = el as HTMLDivElement)}>
+                    <slot />
+                </div>
 
                 {this.credentialsPrompt && (
                     <form class="prompt" onSubmit={(event) => this.submit_credentials(event)}>
