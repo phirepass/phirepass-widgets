@@ -11,7 +11,7 @@ import {
     ProtocolMessageWebRDPAuthorized,
     ProtocolMessageWebTunnelClosed,
 } from '../../common/protocol';
-import { measure_desktop_size, ViewportSync } from './phirepass-rdp.viewport';
+import { measure_initial_desktop_size, ViewportSync } from './phirepass-rdp.viewport';
 import {
     focus_client,
     keyboard_lock_supported,
@@ -54,6 +54,7 @@ export class PhirepassRdp {
     private domReady = false;
     private runtimeReady = false;
     private connected = false;
+    private disposed = false;
     private session_id?: number;
 
     private readonly onFullscreenChange = () => this.sync_keyboard_lock();
@@ -193,6 +194,10 @@ export class PhirepassRdp {
     async connectedCallback() {
         document.addEventListener('fullscreenchange', this.onFullscreenChange);
 
+        // A widget can be moved in the DOM rather than destroyed, which
+        // disconnects and reconnects it; the second life is a real one.
+        this.disposed = false;
+
         await init();
         this.open_comms();
         this.runtimeReady = true;
@@ -210,9 +215,19 @@ export class PhirepassRdp {
         this.try_connect();
     }
 
+    /**
+     * Closing an RDP tab unmounts the widget, and this is the only notice we
+     * get. Everything the session is made of has to go with it — including the
+     * parts that are still being built: the tunnel can be authorised, or the RDP
+     * client's own WebSocket already open, while the modules it needs are still
+     * loading. `disposed` is what those in-flight steps check before carrying
+     * on, and clearing `session_id` invalidates any answer still on its way.
+     */
     async disconnectedCallback() {
         document.removeEventListener('fullscreenchange', this.onFullscreenChange);
 
+        this.disposed = true;
+        this.session_id = undefined;
         this.connected = false;
         this.domReady = false;
         this.runtimeReady = false;
@@ -375,13 +390,13 @@ export class PhirepassRdp {
         ]);
 
         // The element may have gone away while the modules were loading.
-        if (!this.containerEl || this.session_id !== web.sid) {
+        if (this.disposed || !this.containerEl || this.session_id !== web.sid) {
             return;
         }
 
         await backend.init('info');
 
-        if (!this.containerEl || this.session_id !== web.sid) {
+        if (this.disposed || !this.containerEl || this.session_id !== web.sid) {
             return;
         }
 
@@ -430,14 +445,33 @@ export class PhirepassRdp {
             .withAuthToken(ticket)
             .withExtension(credssp);
 
-        // Asking for the widget's size up front costs nothing and saves the
-        // remote host a resolution change immediately after logon.
+        // Asking for the widget's size up front saves the remote host a
+        // resolution change immediately after logon — but only when the widget
+        // has been laid out. An unmeasurable widget asks for nothing and lets
+        // `start_viewport_sync` correct the size once the client is visible;
+        // sending a size derived from a zero-sized box is how a host ends up
+        // refusing the connection outright.
         if (this.dynamicResize) {
-            builder.withDesktopSize(measure_desktop_size(this.el));
+            const size = measure_initial_desktop_size(this.el);
+            if (size) {
+                builder.withDesktopSize(size);
+            }
         }
 
         try {
             const session = await userInteraction.connect(builder.build());
+
+            // The tab can be closed while this handshake is in flight. The
+            // session owns the RDP WebSocket and nothing else can close it, so
+            // the socket is only released by letting the session loop start and
+            // see the shutdown it was already handed — terminate first, then
+            // run, and never make the widget visible.
+            if (this.disposed) {
+                this.shutdown_session(userInteraction);
+                await session.run();
+                return;
+            }
+
             userInteraction.setVisibility(true);
             this.statusMessage = undefined;
             this.focus_desktop();
@@ -525,16 +559,25 @@ export class PhirepassRdp {
         this.connectionStateChanged.emit([ConnectionState.Error, error]);
     }
 
+    /**
+     * Asks the RDP client to end its session, which is also what closes the
+     * socket it opened. Failing here is not worth propagating: the caller is
+     * already tearing the widget down and has nothing else to try.
+     */
+    private shutdown_session(userInteraction: UserInteraction) {
+        try {
+            userInteraction.shutdown();
+        } catch (err) {
+            console.warn('Failed to shut the RDP session down cleanly:', err);
+        }
+    }
+
     private teardown_client() {
         this.stop_viewport_sync();
         unlock_keyboard();
 
         if (this.userInteraction) {
-            try {
-                this.userInteraction.shutdown();
-            } catch (err) {
-                console.warn('Failed to shut the RDP session down cleanly:', err);
-            }
+            this.shutdown_session(this.userInteraction);
             this.userInteraction = undefined;
         }
 

@@ -174,7 +174,15 @@ describe('phirepass-rdp', () => {
     });
 
     describe('handing the session to the RDP client', () => {
-        async function reachReadyClient(props: Record<string, unknown> = {}) {
+        /**
+         * `beforeReady` runs after the widget is rendered but before the client
+         * announces itself — the only window in which the widget's layout can be
+         * staged, since connecting is what reads it.
+         */
+        async function reachReadyClient(
+            props: Record<string, unknown> = {},
+            beforeReady?: (root: HTMLElement) => void,
+        ) {
             const rendered = await render(
                 h('phirepass-rdp', { ...baseProps, username: 'admin', password: 'hunter2', ...props }),
             );
@@ -183,6 +191,8 @@ describe('phirepass-rdp', () => {
             channel().handlers.protocol(authorizedFrame());
 
             await waitFor(() => !!rendered.root.querySelector('iron-remote-desktop'), 'the RDP client element');
+
+            beforeReady?.(rendered.root as HTMLElement);
 
             const element = rendered.root.querySelector('iron-remote-desktop') as HTMLElement & { module: unknown };
             const userInteraction = fakeUserInteraction();
@@ -249,10 +259,36 @@ describe('phirepass-rdp', () => {
         // The desktop is asked for at the widget's size so the host logs in at
         // the right resolution instead of resizing a moment later.
         it('asks for a desktop the size of the widget', async () => {
+            const { userInteraction } = await reachReadyClient({}, (root) => {
+                root.getBoundingClientRect = () => ({ width: 1281, height: 903 }) as DOMRect;
+            });
+            const config = (userInteraction.connect as any).mock.calls[0][0];
+
+            expect(config.desktopSize).toEqual({ width: 1280, height: 902 });
+        });
+
+        // A widget in a hidden tab, or one whose container has not been laid
+        // out, measures 0×0. Rounding that up to the smallest legal desktop
+        // asks the host to open at 200×200 — a size no one wants, and one a
+        // host may refuse by dropping the connection mid-sequence, which the
+        // client can only report as a truncated stream. Ask for nothing and let
+        // the resize that follows visibility set the real size.
+        it('asks for no desktop size when the widget has not been laid out', async () => {
             const { userInteraction } = await reachReadyClient();
             const config = (userInteraction.connect as any).mock.calls[0][0];
 
-            expect(config.desktopSize).toEqual({ width: 200, height: 200 });
+            expect(config.desktopSize).toBeUndefined();
+        });
+
+        // The connect-time field is capped at 4096 by the protocol, unlike the
+        // display-control PDU the later resizes go through.
+        it('caps the requested desktop at what the connect PDU allows', async () => {
+            const { userInteraction } = await reachReadyClient({}, (root) => {
+                root.getBoundingClientRect = () => ({ width: 5120, height: 2880 }) as DOMRect;
+            });
+            const config = (userInteraction.connect as any).mock.calls[0][0];
+
+            expect(config.desktopSize).toEqual({ width: 4096, height: 2880 });
         });
 
         it('leaves the desktop size to the host when dynamic resize is off', async () => {
@@ -285,6 +321,90 @@ describe('phirepass-rdp', () => {
             await waitForChanges();
 
             expect(root.shadowRoot!.querySelector('.status')!.textContent).toContain('session ended');
+        });
+    });
+
+    /**
+     * Closing an RDP tab unmounts the widget and nothing else. The session it
+     * leaves behind is not local: the agent holds a TCP connection to the RDP
+     * host and the host holds a desktop, so anything the widget fails to shut
+     * down stays open on someone else's machine.
+     */
+    describe('closing the tab', () => {
+        it('shuts the session down and closes the channel', async () => {
+            const rendered = await render(
+                h('phirepass-rdp', { ...baseProps, username: 'admin', password: 'hunter2' }),
+            );
+
+            channel().handlers.protocol(authSuccessFrame());
+            channel().handlers.protocol(authorizedFrame());
+
+            await waitFor(() => !!rendered.root.querySelector('iron-remote-desktop'), 'the RDP client element');
+
+            const userInteraction = fakeUserInteraction();
+            rendered.root
+                .querySelector('iron-remote-desktop')!
+                .dispatchEvent(new CustomEvent('ready', { detail: { irgUserInteraction: userInteraction } }));
+            await waitFor(() => (userInteraction.connect as any).mock.calls.length > 0, 'the client to connect');
+
+            rendered.root.remove();
+
+            expect(userInteraction.shutdown).toHaveBeenCalled();
+            expect(channel().disconnect).toHaveBeenCalled();
+            expect(channel().stop_heartbeat).toHaveBeenCalled();
+        });
+
+        // The socket the RDP client opened belongs to the client, and the only
+        // way to close it is to let its session loop start and see the shutdown
+        // it was handed. Returning early instead would leak the socket — and
+        // with it the agent's connection to the host.
+        it('shuts down a session that arrives after the widget is gone', async () => {
+            const rendered = await render(
+                h('phirepass-rdp', { ...baseProps, username: 'admin', password: 'hunter2' }),
+            );
+
+            channel().handlers.protocol(authSuccessFrame());
+            channel().handlers.protocol(authorizedFrame());
+
+            await waitFor(() => !!rendered.root.querySelector('iron-remote-desktop'), 'the RDP client element');
+
+            const userInteraction = fakeUserInteraction();
+            const session = mocks.sessions[mocks.sessions.length - 1];
+            let handshakeDone: (value: unknown) => void = () => {};
+            userInteraction.connect = vi.fn(
+                () => new Promise((resolve) => (handshakeDone = resolve)),
+            ) as any;
+
+            rendered.root
+                .querySelector('iron-remote-desktop')!
+                .dispatchEvent(new CustomEvent('ready', { detail: { irgUserInteraction: userInteraction } }));
+            await waitFor(() => (userInteraction.connect as any).mock.calls.length > 0, 'the client to connect');
+
+            rendered.root.remove();
+            handshakeDone(session);
+
+            await waitFor(() => (session.run as any).mock.calls.length > 0, 'the session to be drained');
+            expect(userInteraction.shutdown).toHaveBeenCalled();
+            expect(userInteraction.setVisibility).not.toHaveBeenCalled();
+        });
+
+        // The ticket is already minted at this point, but the client that would
+        // use it is still a dynamic import away. Mounting it now would open a
+        // socket for a widget that no longer exists.
+        it('never mounts a client for a widget that has gone', async () => {
+            const rendered = await render(
+                h('phirepass-rdp', { ...baseProps, username: 'admin', password: 'hunter2' }),
+            );
+
+            channel().handlers.protocol(authSuccessFrame());
+            channel().handlers.protocol(authorizedFrame());
+            rendered.root.remove();
+
+            for (let tick = 0; tick < 10; tick += 1) {
+                await new Promise((resolve) => setTimeout(resolve, 5));
+            }
+
+            expect(rendered.root.querySelector('iron-remote-desktop')).toBeFalsy();
         });
     });
 

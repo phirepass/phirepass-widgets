@@ -9,6 +9,15 @@ import type { DesktopSize } from '@devolutions/iron-remote-desktop';
 const MIN_DIMENSION = 200;
 const MAX_DIMENSION = 8192;
 
+/**
+ * The size requested at *connect* time travels in the Client Core Data, whose
+ * desktop dimensions the protocol caps at 4096 — half what the display-control
+ * PDU above allows. A host does not negotiate an out-of-range value down; it
+ * drops the connection partway through the sequence, which the client can only
+ * report as a truncated stream.
+ */
+const MAX_CONNECT_DIMENSION = 4096;
+
 /** How long a drag has to settle before the host is asked for a new size. */
 export const RESIZE_DEBOUNCE_MS = 250;
 
@@ -32,6 +41,36 @@ export function clamp_desktop_size(width: number, height: number): DesktopSize {
 export function measure_desktop_size(element: Element): DesktopSize {
     const rect = element.getBoundingClientRect();
     return clamp_desktop_size(rect.width, rect.height);
+}
+
+/**
+ * The size to open a session at, or `undefined` when the widget has no usable
+ * layout yet — in which case the host should choose and [`ViewportSync`] will
+ * correct it as soon as the client is visible.
+ *
+ * This is deliberately not [`measure_desktop_size`]. That function clamps, which
+ * is right for a resize — a host asked for something silly should get the
+ * nearest legal size — but wrong here, because the widget legitimately measures
+ * 0×0 before connecting: it sits in a `display: none` tab, or in a container
+ * that has not been laid out, or is simply still hidden. Clamping turns that
+ * into a request to open the desktop at 200×200, and "the smallest legal
+ * desktop" is not what a zero-sized box meant. Asking for nothing is.
+ */
+export function measure_initial_desktop_size(element: Element): DesktopSize | undefined {
+    const rect = element.getBoundingClientRect();
+
+    if (!Number.isFinite(rect.width) || !Number.isFinite(rect.height)) {
+        return undefined;
+    }
+
+    if (rect.width < MIN_DIMENSION || rect.height < MIN_DIMENSION) {
+        return undefined;
+    }
+
+    return {
+        width: even(Math.min(Math.floor(rect.width), MAX_CONNECT_DIMENSION)),
+        height: even(Math.min(Math.floor(rect.height), MAX_CONNECT_DIMENSION)),
+    };
 }
 
 export function same_desktop_size(a?: DesktopSize, b?: DesktopSize): boolean {
