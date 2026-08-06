@@ -608,7 +608,7 @@ export class PhirepassRdp {
 
                 {this.credentialsPrompt && (
                     <form class="prompt" onSubmit={(event) => this.submit_credentials(event)}>
-                        <label htmlFor="rdp-username">Windows username</label>
+                        <label htmlFor="rdp-username">Username</label>
                         <input
                             id="rdp-username"
                             type="text"
