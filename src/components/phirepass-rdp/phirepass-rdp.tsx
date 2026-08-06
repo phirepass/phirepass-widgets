@@ -612,7 +612,7 @@ export class PhirepassRdp {
                         <input
                             id="rdp-username"
                             type="text"
-                            autocomplete="username"
+                            autocomplete="off"
                             autofocus
                             onInput={(event) => (this.usernameBuffer = (event.target as HTMLInputElement).value)}
                         />
@@ -620,7 +620,7 @@ export class PhirepassRdp {
                         <input
                             id="rdp-password"
                             type="password"
-                            autocomplete="current-password"
+                            autocomplete="off"
                             onInput={(event) => (this.passwordBuffer = (event.target as HTMLInputElement).value)}
                         />
                         <button type="submit">Connect</button>
