@@ -43,7 +43,7 @@
     "devDependencies": {
         "@stencil/core": "^4.43.5",
         "@stencil/vitest": "^1.14.0",
-        "@types/node": "^26.1.2",
+        "@types/node": "^22",
         "vitest": "^4.1.10"
     },
     "license": "AGPL-3.0-or-later",
