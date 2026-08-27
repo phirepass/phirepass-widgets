@@ -128,9 +128,11 @@ export class PhirepassRdp {
      * the widget is resized, so the desktop is rendered at native size rather
      * than scaled.
      *
-     * The host has the last word: this needs the display-control channel, and a
-     * host that does not offer it simply keeps the resolution it started with —
-     * which `scale` then fits into the widget, as before.
+     * Turning this on is what registers the display-control extension, since
+     * the channel it opens is negotiated at connect time and never afterwards.
+     * The host still has the last word: one that does not offer the channel
+     * keeps the resolution it started with, which `scale` then fits into the
+     * widget, as before.
      */
     @Prop()
     dynamicResize = true;
@@ -146,6 +148,18 @@ export class PhirepassRdp {
      */
     @Prop()
     captureKeyboard = true;
+
+    /**
+     * Share the clipboard with the remote host in both directions.
+     *
+     * On is the client's own default and needs nothing from us, so this exists
+     * to turn it **off**: a deployment that treats copy-out as exfiltration can
+     * take the clipboard away without giving up the session. Clipboard access
+     * additionally needs a secure context — over plain HTTP the browser refuses
+     * it whatever this says, and the client's warning is logged.
+     */
+    @Prop()
+    clipboard = true;
 
     @Watch('nodeId')
     onNodeIdChange(newValue?: string, _oldValue?: string) {
@@ -257,6 +271,45 @@ export class PhirepassRdp {
     @Method()
     async focusDesktop(): Promise<void> {
         this.focus_desktop();
+    }
+
+    /**
+     * Sends Ctrl+Alt+Del to the remote host.
+     *
+     * The host has to be told, because pressing it never reaches us: Ctrl+Alt+Del
+     * is a secure attention sequence the operating system takes before any
+     * browser sees it, and `captureKeyboard` cannot claim it either. Yet it is
+     * how a Windows session is unlocked and how the login screen is reached, so
+     * without this a locked desktop is a dead end.
+     *
+     * Answers whether it was sent — there is no session to send it to until the
+     * client has connected.
+     */
+    @Method()
+    async sendCtrlAltDel(): Promise<boolean> {
+        if (!this.userInteraction) {
+            return false;
+        }
+
+        this.userInteraction.ctrlAltDel();
+        this.focus_desktop();
+        return true;
+    }
+
+    /**
+     * Sends the Meta (Windows/Command) key to the remote host, which opens the
+     * Start menu. Outside fullscreen the browser and the desktop environment
+     * take this key first, so like Ctrl+Alt+Del it has to be sendable directly.
+     */
+    @Method()
+    async sendMetaKey(): Promise<boolean> {
+        if (!this.userInteraction) {
+            return false;
+        }
+
+        this.userInteraction.metaKey();
+        this.focus_desktop();
+        return true;
     }
 
     private try_connect() {
@@ -407,9 +460,27 @@ export class PhirepassRdp {
         element.scale = this.scale;
         element.flexcenter = true;
         element.verbose = false;
+        // Extensions are how the client is configured, and neither
+        // `iron-remote-desktop` nor its RDP backend registers one on the app's
+        // behalf — both packages only expose the factories.
+        const extensions: unknown[] = [backend.enableCredssp(true)];
+
+        // The DisplayControl virtual channel is negotiated at connect time and
+        // never afterwards: it is how the client tells the host it can accept a
+        // resolution change at all. A client that did not ask for it fails
+        // every `resize()` with "Display Control Virtual Channel is not
+        // available", which reaches the widget as a host that silently refuses
+        // to resize — making the viewport sync, the initial desktop
+        // measurement and the `dynamicResize` prop all look like a host
+        // limitation. Asked for only when `dynamicResize` is on, so a caller
+        // that turned it off does not advertise a channel it will never use.
+        if (this.dynamicResize) {
+            extensions.push(backend.displayControl(true));
+        }
+
         element.addEventListener('ready', (event: Event) => {
             const detail = (event as CustomEvent<{ irgUserInteraction: UserInteraction }>).detail;
-            void this.start_session(detail.irgUserInteraction, web.ticket, backend.enableCredssp(true));
+            void this.start_session(detail.irgUserInteraction, web.ticket, extensions);
         });
 
         this.ironEl = element;
@@ -433,8 +504,26 @@ export class PhirepassRdp {
         this.el.appendChild(element);
     }
 
-    private async start_session(userInteraction: UserInteraction, ticket: string, credssp: unknown) {
+    private async start_session(userInteraction: UserInteraction, ticket: string, extensions: unknown[]) {
         this.userInteraction = userInteraction;
+
+        // Both clipboard switches are on by default inside the client, and its
+        // element wires the browser side up on its own — so this only ever
+        // turns the clipboard off. It has to happen before `connect`, because
+        // that is when the client decides whether to register the clipboard
+        // callbacks with its backend at all.
+        if (!this.clipboard) {
+            userInteraction.setEnableClipboard(false);
+        }
+
+        // Clipboard problems are reported this way and no other: an insecure
+        // context, a browser too old for the async clipboard API, a read the
+        // user never granted. Without a callback the client's own warning is
+        // dropped, and a clipboard that does nothing looks identical to one
+        // that was never asked for.
+        userInteraction.onWarningCallback((warning: string) => {
+            console.warn('The remote desktop client reported a problem:', warning);
+        });
 
         const builder = userInteraction
             .configBuilder()
@@ -442,8 +531,11 @@ export class PhirepassRdp {
             .withPassword(this.credentials?.password ?? '')
             .withDestination(this.destination ?? this.nodeId)
             .withProxyAddress(`${this.create_web_socket_endpoint()}/api/web/rdp/${this.nodeId}`)
-            .withAuthToken(ticket)
-            .withExtension(credssp);
+            .withAuthToken(ticket);
+
+        for (const extension of extensions) {
+            builder.withExtension(extension);
+        }
 
         // Asking for the widget's size up front saves the remote host a
         // resolution change immediately after logon — but only when the widget

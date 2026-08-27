@@ -28,11 +28,16 @@ export namespace Components {
          */
         "captureKeyboard": boolean;
         /**
+          * Share the clipboard with the remote host in both directions.  On is the client's own default and needs nothing from us, so this exists to turn it **off**: a deployment that treats copy-out as exfiltration can take the clipboard away without giving up the session. Clipboard access additionally needs a secure context — over plain HTTP the browser refuses it whatever this says, and the client's warning is logged.
+          * @default true
+         */
+        "clipboard": boolean;
+        /**
           * What to name the host in the CredSSP service principal (`TERMSRV/...`).  The agent dials whatever the node's service settings say, so this is never used for routing. It matters only because some hosts check the SPN, and the browser has no other way to learn the host's real address.
          */
         "destination"?: string;
         /**
-          * Ask the remote host to change its resolution to match the widget whenever the widget is resized, so the desktop is rendered at native size rather than scaled.  The host has the last word: this needs the display-control channel, and a host that does not offer it simply keeps the resolution it started with — which `scale` then fits into the widget, as before.
+          * Ask the remote host to change its resolution to match the widget whenever the widget is resized, so the desktop is rendered at native size rather than scaled.  Turning this on is what registers the display-control extension, since the channel it opens is negotiated at connect time and never afterwards. The host still has the last word: one that does not offer the channel keeps the resolution it started with, which `scale` then fits into the widget, as before.
           * @default true
          */
         "dynamicResize": boolean;
@@ -55,6 +60,14 @@ export namespace Components {
           * @default 'fit'
          */
         "scale": 'fit' | 'full' | 'real';
+        /**
+          * Sends Ctrl+Alt+Del to the remote host.  The host has to be told, because pressing it never reaches us: Ctrl+Alt+Del is a secure attention sequence the operating system takes before any browser sees it, and `captureKeyboard` cannot claim it either. Yet it is how a Windows session is unlocked and how the login screen is reached, so without this a locked desktop is a dead end.  Answers whether it was sent — there is no session to send it to until the client has connected.
+         */
+        "sendCtrlAltDel": () => Promise<boolean>;
+        /**
+          * Sends the Meta (Windows/Command) key to the remote host, which opens the Start menu. Outside fullscreen the browser and the desktop environment take this key first, so like Ctrl+Alt+Del it has to be sendable directly.
+         */
+        "sendMetaKey": () => Promise<boolean>;
         /**
           * @default "phirepass.com"
          */
@@ -219,7 +232,7 @@ declare global {
     }
 }
 declare namespace LocalJSX {
-    type OneOf<K extends string, PropT, AttrT = PropT> = { [P in K]: PropT } & { [P in `attr:${K}` | `prop:${K}`]?: never } | { [P in `attr:${K}`]: AttrT } & { [P in K | `prop:${K}`]?: never } | { [P in `prop:${K}`]: PropT } & { [P in K | `attr:${K}`]?: never };
+    type OneOf<K extends string, PropT, AttrT = PropT> = { [P in K]: PropT } & { [P in `attr:${K}`]?: never } | { [P in `attr:${K}`]: AttrT } & { [P in K]?: never };
 
     /**
      * Remote desktop over RDP.
@@ -241,11 +254,16 @@ declare namespace LocalJSX {
          */
         "captureKeyboard"?: boolean;
         /**
+          * Share the clipboard with the remote host in both directions.  On is the client's own default and needs nothing from us, so this exists to turn it **off**: a deployment that treats copy-out as exfiltration can take the clipboard away without giving up the session. Clipboard access additionally needs a secure context — over plain HTTP the browser refuses it whatever this says, and the client's warning is logged.
+          * @default true
+         */
+        "clipboard"?: boolean;
+        /**
           * What to name the host in the CredSSP service principal (`TERMSRV/...`).  The agent dials whatever the node's service settings say, so this is never used for routing. It matters only because some hosts check the SPN, and the browser has no other way to learn the host's real address.
          */
         "destination"?: string;
         /**
-          * Ask the remote host to change its resolution to match the widget whenever the widget is resized, so the desktop is rendered at native size rather than scaled.  The host has the last word: this needs the display-control channel, and a host that does not offer it simply keeps the resolution it started with — which `scale` then fits into the widget, as before.
+          * Ask the remote host to change its resolution to match the widget whenever the widget is resized, so the desktop is rendered at native size rather than scaled.  Turning this on is what registers the display-control extension, since the channel it opens is negotiated at connect time and never afterwards. The host still has the last word: one that does not offer the channel keeps the resolution it started with, which `scale` then fits into the widget, as before.
           * @default true
          */
         "dynamicResize"?: boolean;
@@ -355,6 +373,7 @@ declare namespace LocalJSX {
         "scale": 'fit' | 'full' | 'real';
         "dynamicResize": boolean;
         "captureKeyboard": boolean;
+        "clipboard": boolean;
         "serverId": string;
     }
     interface PhirepassSftpClientAttributes {

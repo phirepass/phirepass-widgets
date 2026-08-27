@@ -48,6 +48,7 @@ vi.mock('@devolutions/iron-remote-desktop-rdp', () => ({
     init: vi.fn(async () => {}),
     Backend: { backend: 'rdp' },
     enableCredssp: vi.fn((enable: boolean) => ({ extension: 'credssp', enable })),
+    displayControl: vi.fn((enable: boolean) => ({ extension: 'display_control', enable })),
 }));
 
 import './phirepass-rdp';
@@ -62,10 +63,13 @@ function fakeUserInteraction() {
         withDestination: vi.fn((v: string) => ((built.destination = v), builder)),
         withProxyAddress: vi.fn((v: string) => ((built.proxyAddress = v), builder)),
         withAuthToken: vi.fn((v: string) => ((built.authToken = v), builder)),
-        withExtension: vi.fn((v: unknown) => ((built.extension = v), builder)),
+        // Collected, not overwritten: more than one extension is registered and
+        // a builder that kept only the last would hide exactly that.
+        withExtension: vi.fn((v: unknown) => ((built.extensions as unknown[]).push(v), builder)),
         withDesktopSize: vi.fn((v: unknown) => ((built.desktopSize = v), builder)),
         build: vi.fn(() => built),
     };
+    built.extensions = [];
     mocks.builders.push(builder);
 
     const session = {
@@ -79,6 +83,10 @@ function fakeUserInteraction() {
         setVisibility: vi.fn(),
         shutdown: vi.fn(),
         resize: vi.fn(),
+        setEnableClipboard: vi.fn(),
+        onWarningCallback: vi.fn(),
+        ctrlAltDel: vi.fn(),
+        metaKey: vi.fn(),
     };
 }
 
@@ -237,7 +245,29 @@ describe('phirepass-rdp', () => {
 
             expect(config.username).toBe('admin');
             expect(config.password).toBe('hunter2');
-            expect(config.extension).toEqual({ extension: 'credssp', enable: true });
+            expect(config.extensions).toContainEqual({ extension: 'credssp', enable: true });
+        });
+
+        // The DisplayControl virtual channel is negotiated at connect time and
+        // never afterwards, so a client that did not register the extension can
+        // only fail every resize — which the widget reports as a host that
+        // would not resize, making a missing extension look like a host
+        // limitation. Every other resize test drives a stubbed client and would
+        // pass without the channel ever being asked for; this is the one that
+        // says it was.
+        it('asks for the display control channel so resizes are more than a no-op', async () => {
+            const { userInteraction } = await reachReadyClient();
+            const config = (userInteraction.connect as any).mock.calls[0][0];
+
+            expect(config.extensions).toContainEqual({ extension: 'display_control', enable: true });
+        });
+
+        it('never asks for display control when dynamic resize is off', async () => {
+            const { userInteraction } = await reachReadyClient({ dynamicResize: false });
+            const config = (userInteraction.connect as any).mock.calls[0][0];
+
+            expect(config.extensions).toContainEqual({ extension: 'credssp', enable: true });
+            expect(config.extensions).not.toContainEqual({ extension: 'display_control', enable: true });
         });
 
         it('names the destination the caller supplied, falling back to the node id', async () => {
@@ -314,6 +344,39 @@ describe('phirepass-rdp', () => {
             expect(userInteraction.resize).not.toHaveBeenCalled();
         });
 
+        // The client shares the clipboard by default and wires the browser side
+        // up itself, so the widget's job is only to be able to take it away —
+        // and to leave it alone otherwise. Turning it off has to happen before
+        // `connect`, which is when the client decides whether to register the
+        // clipboard callbacks with its backend at all.
+        it('leaves the clipboard alone when it is allowed', async () => {
+            const { userInteraction } = await reachReadyClient();
+            expect(userInteraction.setEnableClipboard).not.toHaveBeenCalled();
+        });
+
+        it('takes the clipboard away before connecting when it is not allowed', async () => {
+            const { userInteraction } = await reachReadyClient({ clipboard: false });
+
+            expect(userInteraction.setEnableClipboard).toHaveBeenCalledWith(false);
+            expect((userInteraction.setEnableClipboard as any).mock.invocationCallOrder[0])
+                .toBeLessThan((userInteraction.connect as any).mock.invocationCallOrder[0]);
+        });
+
+        // An insecure context, a browser without the async clipboard API, a
+        // read the user never granted: the client reports all of them here and
+        // nowhere else, so an unregistered callback makes a clipboard that does
+        // nothing indistinguishable from one nobody asked for.
+        it('listens for the warnings the client would otherwise drop', async () => {
+            const { userInteraction } = await reachReadyClient();
+            expect(userInteraction.onWarningCallback).toHaveBeenCalledTimes(1);
+
+            const warn = vi.spyOn(console, 'warn').mockImplementation(() => {});
+            (userInteraction.onWarningCallback as any).mock.calls[0][0]('Clipboard is not supported');
+
+            expect(warn).toHaveBeenCalledWith(expect.any(String), 'Clipboard is not supported');
+            warn.mockRestore();
+        });
+
         it('reports the reason the session ended', async () => {
             const { root, waitForChanges } = await reachReadyClient();
 
@@ -321,6 +384,59 @@ describe('phirepass-rdp', () => {
             await waitForChanges();
 
             expect(root.shadowRoot!.querySelector('.status')!.textContent).toContain('session ended');
+        });
+    });
+
+    /**
+     * Ctrl+Alt+Del is a secure attention sequence the operating system takes
+     * before any browser sees it, and the Meta key is claimed by the browser
+     * and the desktop environment. Neither can be typed into the remote host,
+     * so both have to be sendable directly or a locked Windows desktop is a
+     * dead end.
+     */
+    describe('keys the browser can never forward', () => {
+        async function reachRunningSession() {
+            const rendered = await render(
+                h('phirepass-rdp', { ...baseProps, username: 'admin', password: 'hunter2' }),
+            );
+
+            channel().handlers.protocol(authSuccessFrame());
+            channel().handlers.protocol(authorizedFrame());
+
+            await waitFor(() => !!rendered.root.querySelector('iron-remote-desktop'), 'the RDP client element');
+
+            const element = rendered.root.querySelector('iron-remote-desktop') as HTMLElement;
+            const userInteraction = fakeUserInteraction();
+            element.dispatchEvent(new CustomEvent('ready', { detail: { irgUserInteraction: userInteraction } }));
+
+            await waitFor(() => (userInteraction.connect as any).mock.calls.length > 0, 'the client to connect');
+
+            return { ...rendered, userInteraction };
+        }
+
+        it('sends ctrl+alt+del to the host', async () => {
+            const { root, userInteraction } = await reachRunningSession();
+
+            await expect((root as any).sendCtrlAltDel()).resolves.toBe(true);
+            expect(userInteraction.ctrlAltDel).toHaveBeenCalledTimes(1);
+        });
+
+        it('sends the meta key to the host', async () => {
+            const { root, userInteraction } = await reachRunningSession();
+
+            await expect((root as any).sendMetaKey()).resolves.toBe(true);
+            expect(userInteraction.metaKey).toHaveBeenCalledTimes(1);
+        });
+
+        // The panel offers the control for as long as a tab is open, which is
+        // longer than a session lasts: before the client connects and after it
+        // has been torn down there is nothing to send to, and saying so lets
+        // the caller disable the control rather than have it fail silently.
+        it('reports that it sent nothing when there is no session', async () => {
+            const { root } = await render(h('phirepass-rdp', { ...baseProps }));
+
+            await expect((root as any).sendCtrlAltDel()).resolves.toBe(false);
+            await expect((root as any).sendMetaKey()).resolves.toBe(false);
         });
     });
 
