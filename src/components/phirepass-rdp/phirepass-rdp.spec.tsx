@@ -329,12 +329,41 @@ describe('phirepass-rdp', () => {
         });
 
         // The widget's size is measured only once the client has been made
-        // visible; before that it is a hidden, zero-sized box.
+        // visible; before that it is a hidden, zero-sized box — so it asked the
+        // host for nothing at connect, and the first report is a real request.
         it('resizes the remote desktop to the widget once the session is up', async () => {
             const { userInteraction } = await reachReadyClient();
 
             await waitFor(() => (userInteraction.resize as any).mock.calls.length > 0, 'the resize request');
             expect((userInteraction.resize as any).mock.calls[0]).toEqual([200, 200]);
+        });
+
+        // A display-control PDU makes the host renegotiate capabilities and
+        // resend the screen, and this one arrives moments after the connection
+        // sequence — asking for the resolution the session was *already* opened
+        // at is how the client ends up parsing a fast-path bitmap whose declared
+        // length no longer matches the stream. The widget put this exact size in
+        // the connect PDU, so there is nothing to ask for.
+        it('does not ask the host for the size it already opened at', async () => {
+            const { userInteraction } = await reachReadyClient({}, (root) => {
+                root.getBoundingClientRect = () => ({ width: 1281, height: 903 }) as DOMRect;
+            });
+
+            await waitFor(() => (mocks.sessions[0].run as any).mock.calls.length > 0, 'the session to run');
+            expect((userInteraction.connect as any).mock.calls[0][0].desktopSize)
+                .toEqual({ width: 1280, height: 902 });
+            expect(userInteraction.resize).not.toHaveBeenCalled();
+        });
+
+        // `run` is what drives the stream. A resize emitted before it is parsed
+        // by a session that has not started reading, which is the other half of
+        // the same truncation.
+        it('starts the session loop before it sends the first resize', async () => {
+            const { userInteraction } = await reachReadyClient();
+
+            await waitFor(() => (userInteraction.resize as any).mock.calls.length > 0, 'the resize request');
+            expect((mocks.sessions[0].run as any).mock.invocationCallOrder[0])
+                .toBeLessThan((userInteraction.resize as any).mock.invocationCallOrder[0]);
         });
 
         it('never resizes the remote desktop when dynamic resize is off', async () => {

@@ -101,9 +101,20 @@ export class ViewportSync {
     /**
      * Starts watching `element`. The current size is reported immediately, so a
      * widget that was resized while disconnected catches up on reconnect.
+     *
+     * `openedAt` is the size the session was actually opened at, and passing it
+     * is what stops that immediate report from being a resize to the resolution
+     * the host is already showing. That redundant request is not free: a
+     * display-control PDU makes the host renegotiate capabilities and resend the
+     * screen, and arriving moments after the connection sequence it is the worst
+     * possible time to ask — the client can end up parsing a bitmap whose
+     * declared length no longer matches the stream. Seeded here rather than
+     * suppressed at the call site because "what has the host been told" is this
+     * class's state; the caller only knows what it asked for at connect.
      */
-    observe(element: Element) {
+    observe(element: Element, openedAt?: DesktopSize) {
         this.disconnect();
+        this.reported = openedAt;
         this.report(measure_desktop_size(element));
 
         // Absent under the spec test environment, and on nothing else worth

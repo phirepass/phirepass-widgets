@@ -543,10 +543,11 @@ export class PhirepassRdp {
         // `start_viewport_sync` correct the size once the client is visible;
         // sending a size derived from a zero-sized box is how a host ends up
         // refusing the connection outright.
+        let openedAt: DesktopSize | undefined;
         if (this.dynamicResize) {
-            const size = measure_initial_desktop_size(this.el);
-            if (size) {
-                builder.withDesktopSize(size);
+            openedAt = measure_initial_desktop_size(this.el);
+            if (openedAt) {
+                builder.withDesktopSize(openedAt);
             }
         }
 
@@ -567,10 +568,19 @@ export class PhirepassRdp {
             userInteraction.setVisibility(true);
             this.statusMessage = undefined;
             this.focus_desktop();
-            this.start_viewport_sync();
             void this.sync_keyboard_lock();
 
-            const termination = await session.run();
+            // Started before the viewport sync, and kept unawaited until after
+            // it: `run` drives the stream, and the sync can emit a
+            // display-control PDU the moment it is attached. Asking the host to
+            // change resolution while the connection sequence is still being
+            // parsed is how a fast-path bitmap ends up truncated against its own
+            // declared length. Entering `run` first means anything the sync
+            // sends lands on a session that is already reading.
+            const running = session.run();
+            this.start_viewport_sync(openedAt);
+
+            const termination = await running;
             this.statusMessage = termination.reason();
         } catch (err) {
             const message = this.describe_error(err);
@@ -586,13 +596,13 @@ export class PhirepassRdp {
      * measurement has to happen after it — measuring earlier reads a hidden,
      * zero-sized box.
      */
-    private start_viewport_sync() {
+    private start_viewport_sync(openedAt?: DesktopSize) {
         if (!this.dynamicResize) {
             return;
         }
 
         this.viewport = new ViewportSync((size: DesktopSize) => this.resize_desktop(size));
-        this.viewport.observe(this.el);
+        this.viewport.observe(this.el, openedAt);
     }
 
     private stop_viewport_sync() {
