@@ -21,6 +21,7 @@ import {
     ProtocolMessageWebSFTPDownloadChunk,
     ProtocolMessageWebSFTPDownloadStartResponse,
     ProtocolMessageWebSFTPListItems,
+    ProtocolMessageWebSFTPOpResult,
     ProtocolMessageWebSFTPUploadChunkAck,
     ProtocolMessageWebSFTPUploadStartResponse,
     ProtocolMessageWebTunnelClosed,
@@ -56,12 +57,21 @@ type ActiveDownload = {
     startTime: number;
 };
 
-type PendingDelete = {
-    filename: string;
-    msgId: number;
-    startedAt: number;
-    interval?: number;
+/** The answer to one filesystem operation, as it arrives over the wire. */
+type SFTPOpAnswer = ProtocolMessageWebSFTPOpResult['result'];
+
+type PendingOp = {
+    /** Infinitive used in the failure message: "Could not <verb>". */
+    verb: string;
+    timeout: number;
+    resolve: (result: SFTPOpAnswer) => void;
+    reject: (err: Error) => void;
 };
+
+/** Which single-text-field dialog is open, if any. */
+type PromptKind = 'mkdir' | 'rename';
+
+type SortKey = 'name' | 'size' | 'modified';
 
 // https://sweet-sftp-view.lovable.app/
 
@@ -76,7 +86,6 @@ export class PhirepassSftpClient {
     private runtimeReady = false;
     private connected = false;
     private uploadInputEl?: HTMLInputElement;
-    private deleteLoadingTimeout?: number;
     private msgId = 1;
     private activeUploadToken = 0;
     private pendingUploadStarts = new Map<number, PendingUploadStart>();
@@ -84,7 +93,10 @@ export class PhirepassSftpClient {
     private pendingDownloadStarts = new Map<number, PendingDownloadStart>();
     private activeDownloads = new Map<number, ActiveDownload>();
     private activeDownloadMsgId?: number;
-    private pendingDelete?: PendingDelete;
+    private pendingOps = new Map<number, PendingOp>();
+    private promptInputEl?: HTMLInputElement;
+    private editorPath = '';
+    private editorTextEl?: HTMLTextAreaElement;
     // private inputMode: InputMode = InputMode.Default;
 
     private session_id?: number;
@@ -261,6 +273,76 @@ export class PhirepassSftpClient {
     @State()
     delete_loading = false;
 
+    @State()
+    delete_is_dir = false;
+
+    @State()
+    delete_recursive = false;
+
+    @State()
+    delete_error = '';
+
+    /** `mkdir` and `rename` share one dialog: both take a single name. */
+    @State()
+    prompt_kind: PromptKind | null = null;
+
+    @State()
+    prompt_value = '';
+
+    @State()
+    prompt_error = '';
+
+    @State()
+    prompt_busy = false;
+
+    @State()
+    chmod_target: SFTPListItem | null = null;
+
+    /** Permission bits under edit, masked to 0o7777. */
+    @State()
+    chmod_mode = 0;
+
+    @State()
+    chmod_error = '';
+
+    @State()
+    chmod_busy = false;
+
+    @State()
+    show_editor = false;
+
+    @State()
+    editor_name = '';
+
+    @State()
+    editor_text = '';
+
+    /** What is on the remote, so the dialog knows whether it has edits. */
+    @State()
+    editor_saved_text = '';
+
+    @State()
+    editor_busy: '' | 'loading' | 'saving' = '';
+
+    @State()
+    editor_error = '';
+
+    @State()
+    editor_confirm_discard = false;
+
+    /** False until the file's contents are in hand, so a failed open is read-only. */
+    @State()
+    editor_loaded = false;
+
+    @State()
+    filter = '';
+
+    @State()
+    sort_key: SortKey = 'name';
+
+    @State()
+    sort_asc = true;
+
     private toggle_max() {
         this.maximizeEvent?.emit(!this.max);
     }
@@ -300,16 +382,8 @@ export class PhirepassSftpClient {
         this.cancel_active_upload();
         this.cancel_active_download();
         this.clear_pending_operations();
-        this.clear_delete_loading_timeout();
         this.close_comms();
         // this.destroy_terminal();
-    }
-
-    private clear_delete_loading_timeout() {
-        if (this.deleteLoadingTimeout !== undefined) {
-            window.clearTimeout(this.deleteLoadingTimeout);
-            this.deleteLoadingTimeout = undefined;
-        }
     }
 
     private next_msg_id(): number {
@@ -337,16 +411,13 @@ export class PhirepassSftpClient {
         });
         this.pendingDownloadStarts.clear();
 
-        this.stop_delete_polling();
+        this.pendingOps.forEach((pending) => {
+            window.clearTimeout(pending.timeout);
+            pending.reject(new Error(`Could not ${pending.verb}: the session ended.`));
+        });
+        this.pendingOps.clear();
 
         this.activeDownloads.clear();
-    }
-
-    private stop_delete_polling() {
-        if (this.pendingDelete?.interval !== undefined) {
-            window.clearInterval(this.pendingDelete.interval);
-        }
-        this.pendingDelete = undefined;
     }
 
     private cancel_active_upload() {
@@ -504,11 +575,17 @@ export class PhirepassSftpClient {
                 this.download_finished = false;
             }
 
-            if (this.pendingDelete?.msgId === error.msg_id) {
-                this.stop_delete_polling();
-                this.delete_loading = false;
-                this.show_delete_modal = false;
-                this.status = 'Connected';
+            const pendingOp = this.pendingOps.get(error.msg_id);
+            if (pendingOp) {
+                window.clearTimeout(pendingOp.timeout);
+                this.pendingOps.delete(error.msg_id);
+                pendingOp.reject(new Error(error.message || `Could not ${pendingOp.verb}.`));
+
+                // The caller puts this message in the dialog the user is
+                // looking at. Raising the page-level banner as well would say
+                // the same thing twice, in the place they are not looking.
+                this.show_loader = false;
+                return;
             }
         }
 
@@ -561,6 +638,12 @@ export class PhirepassSftpClient {
             this.show_loader = false;
         }, 500);
 
+        // A filter is about the directory you typed it in; carrying it into
+        // the next one hides most of what you just navigated to.
+        if (web.path !== this.current_dir) {
+            this.filter = '';
+        }
+
         this.listing = web.dir.items;
         this.current_dir = web.path;
         this.breadcrumbs = web.path.split('/').map((path, index, arr) => {
@@ -573,17 +656,6 @@ export class PhirepassSftpClient {
 
         this.show_content = true;
         this.show_navigation = true;
-
-        if (this.pendingDelete && web.path === this.current_dir) {
-            const fileStillExists = web.dir.items.some((item) => item.kind === 'File' && item.name === this.pendingDelete?.filename);
-            if (!fileStillExists) {
-                this.stop_delete_polling();
-                this.delete_loading = false;
-                this.show_delete_modal = false;
-                this.delete_file_name = '';
-                this.status = 'Connected';
-            }
-        }
 
         console.log('Received SFTP list items:', web);
     }
@@ -857,6 +929,100 @@ export class PhirepassSftpClient {
         }
     }
 
+    private handle_op_result(web: ProtocolMessageWebSFTPOpResult) {
+        if (web.msg_id === undefined) {
+            return;
+        }
+
+        const pending = this.pendingOps.get(web.msg_id);
+        if (!pending) {
+            return;
+        }
+
+        window.clearTimeout(pending.timeout);
+        this.pendingOps.delete(web.msg_id);
+        pending.resolve(web.result);
+    }
+
+    /**
+     * Send one filesystem operation and wait for its single answer.
+     *
+     * There are three outcomes: an `SFTPOpResult` resolves it, an `Error` frame
+     * carrying the same `msg_id` rejects it, and the timeout covers the case
+     * worth naming — an agent built before these frames existed logs the
+     * unknown frame and drops it, so silence usually means "too old" rather
+     * than "slow", and the message says so.
+     */
+    private run_op(
+        verb: string,
+        send: (msgId: number) => void,
+        timeoutMs = 30_000,
+    ): Promise<SFTPOpAnswer> {
+        if (!this.session_id) {
+            return Promise.reject(new Error('No active SFTP session.'));
+        }
+
+        const msgId = this.next_msg_id();
+
+        return new Promise<SFTPOpAnswer>((resolve, reject) => {
+            const timeout = window.setTimeout(() => {
+                this.pendingOps.delete(msgId);
+                reject(new Error(`Timed out trying to ${verb}. This node's agent may be too old to support it.`));
+            }, timeoutMs);
+
+            this.pendingOps.set(msgId, { verb, timeout, resolve, reject });
+
+            try {
+                send(msgId);
+            } catch (err) {
+                window.clearTimeout(timeout);
+                this.pendingOps.delete(msgId);
+                reject(err instanceof Error ? err : new Error(String(err)));
+            }
+        });
+    }
+
+    private error_text(err: unknown): string {
+        return err instanceof Error ? err.message : String(err);
+    }
+
+    /**
+     * A listing entry carries its *parent* directory in `path`, so a full path
+     * is always the join of the two.
+     */
+    private item_path(item: SFTPListItem): string {
+        return this.join_path(item.path, item.name);
+    }
+
+    private join_path(dir: string, name: string): string {
+        if (!dir || dir === '/') {
+            return `/${name}`;
+        }
+
+        return dir.endsWith('/') ? `${dir}${name}` : `${dir}/${name}`;
+    }
+
+    /** Names the remote would reject, or that would silently mean something else. */
+    private invalid_name(name: string): string {
+        if (!name) {
+            return 'Enter a name.';
+        }
+
+        if (name === '.' || name === '..') {
+            return 'That name is reserved.';
+        }
+
+        if (name.includes('/')) {
+            return 'A name cannot contain "/".';
+        }
+
+        if (name.includes('\u0000')) {
+            return 'A name cannot contain a null byte.';
+        }
+
+        return '';
+    }
+
     private handle_tunnel_data(web: ProtocolMessageWebTunnelData) {
         console.log('received tunnel data:', web);
     }
@@ -933,6 +1099,9 @@ export class PhirepassSftpClient {
                 case ProtocolMessageType.SFTPDownloadChunk:
                     this.handle_download_chunk(web);
                     break;
+                case ProtocolMessageType.SFTPOpResult:
+                    this.handle_op_result(web);
+                    break;
                 default:
                     console.warn('Unhandled protocol message type:', web);
             }
@@ -990,6 +1159,7 @@ export class PhirepassSftpClient {
         this.list_breadcrumb(this.current_dir);
     }
 
+
     private disconnect_session() {
         this.close_comms();
         this.session_id = undefined;
@@ -1011,6 +1181,22 @@ export class PhirepassSftpClient {
         this.download_finished = false;
         this.delete_loading = false;
         this.delete_file_name = '';
+        this.delete_error = '';
+        this.delete_is_dir = false;
+        this.delete_recursive = false;
+        this.prompt_kind = null;
+        this.prompt_value = '';
+        this.prompt_error = '';
+        this.prompt_busy = false;
+        this.chmod_target = null;
+        this.chmod_error = '';
+        this.chmod_busy = false;
+        this.show_editor = false;
+        this.editor_busy = '';
+        this.editor_error = '';
+        this.editor_confirm_discard = false;
+        this.editor_loaded = false;
+        this.filter = '';
         this.version = '';
         this.status = 'Disconnected';
     }
@@ -1025,12 +1211,15 @@ export class PhirepassSftpClient {
         void this.start_download(item);
     }
 
-    private on_file_delete_action(item: SFTPListItem, event: MouseEvent) {
+    private on_file_delete_action(item: SFTPListItem, event: Event) {
         event.preventDefault();
         event.stopPropagation();
         this.selected_item = item;
 
         this.delete_file_name = item.name;
+        this.delete_is_dir = item.kind === 'Folder';
+        this.delete_recursive = false;
+        this.delete_error = '';
         this.delete_loading = false;
         this.show_delete_modal = true;
     }
@@ -1042,66 +1231,453 @@ export class PhirepassSftpClient {
 
         this.show_delete_modal = false;
         this.delete_file_name = '';
-        this.delete_loading = false;
-        this.refresh_directory();
+        this.delete_error = '';
+        this.delete_is_dir = false;
+        this.delete_recursive = false;
     }
 
-    private confirm_delete() {
+    private async confirm_delete() {
         if (this.delete_loading) {
             return;
         }
 
-        if (!this.session_id || !this.selected_item) {
+        const target = this.selected_item;
+        if (!this.session_id || !target) {
             this.show_delete_modal = false;
             return;
         }
 
-        const fileToDelete = this.selected_item.name;
+        const path = this.item_path(target);
+        const recursive = this.delete_is_dir && this.delete_recursive;
 
         this.delete_loading = true;
-        this.status = 'Deleting...';
+        this.delete_error = '';
+        this.show_error = false;
+        this.status = `Deleting ${target.name}...`;
+
+        try {
+            // A recursive delete walks the tree one entry at a time over SSH,
+            // so it earns a far longer leash than the other operations.
+            await this.run_op(
+                'delete',
+                (msgId) => this.channel.send_sftp_remove(this.nodeId, this.session_id!, path, recursive, msgId),
+                recursive ? 300_000 : 30_000,
+            );
+
+            this.delete_loading = false;
+            this.show_delete_modal = false;
+            this.delete_file_name = '';
+            this.delete_is_dir = false;
+            this.delete_recursive = false;
+            this.status = 'Connected';
+            this.refresh_directory();
+        } catch (err) {
+            this.delete_loading = false;
+            this.delete_error = this.error_text(err);
+            this.status = 'Connected';
+        }
+    }
+
+    private open_mkdir() {
+        if (!this.session_id) {
+            return;
+        }
+
+        this.prompt_kind = 'mkdir';
+        this.prompt_value = '';
+        this.prompt_error = '';
+        this.prompt_busy = false;
+    }
+
+    private on_rename_action(item: SFTPListItem, event: Event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!this.session_id) {
+            return;
+        }
+
+        this.selected_item = item;
+        this.prompt_kind = 'rename';
+        this.prompt_value = item.name;
+        this.prompt_error = '';
+        this.prompt_busy = false;
+    }
+
+    private close_prompt() {
+        if (this.prompt_busy) {
+            return;
+        }
+
+        this.prompt_kind = null;
+        this.prompt_value = '';
+        this.prompt_error = '';
+        this.promptInputEl = undefined;
+    }
+
+    private async submit_prompt() {
+        if (this.prompt_busy || !this.session_id) {
+            return;
+        }
+
+        const kind = this.prompt_kind;
+        const name = this.prompt_value.trim();
+
+        const invalid = this.invalid_name(name);
+        if (invalid) {
+            this.prompt_error = invalid;
+            return;
+        }
+
+        const target = this.selected_item;
+        if (kind === 'rename' && target && name === target.name) {
+            this.close_prompt();
+            return;
+        }
+
+        this.prompt_busy = true;
+        this.prompt_error = '';
         this.show_error = false;
 
-        this.stop_delete_polling();
-
-        const msgId = this.next_msg_id();
-        this.pendingDelete = {
-            filename: fileToDelete,
-            msgId,
-            startedAt: Date.now(),
-        };
-
-        const pollOnce = () => {
-            if (!this.pendingDelete) {
+        try {
+            if (kind === 'mkdir') {
+                const path = this.join_path(this.current_dir, name);
+                this.status = `Creating ${name}...`;
+                await this.run_op('create the folder', (msgId) =>
+                    this.channel.send_sftp_mkdir(this.nodeId, this.session_id!, path, msgId));
+            } else if (kind === 'rename' && target) {
+                // `to` is a full path, so the same call would move the entry if
+                // the dialog ever offered a destination directory.
+                const from = this.item_path(target);
+                const to = this.join_path(target.path, name);
+                this.status = `Renaming ${target.name}...`;
+                await this.run_op('rename', (msgId) =>
+                    this.channel.send_sftp_rename(this.nodeId, this.session_id!, from, to, msgId));
+            } else {
+                this.prompt_busy = false;
+                this.close_prompt();
                 return;
             }
 
-            const elapsed = Date.now() - this.pendingDelete.startedAt;
-            if (elapsed >= 30_000) {
-                this.stop_delete_polling();
-                this.delete_loading = false;
-                this.show_delete_modal = false;
-                this.show_error = true;
-                this.error_message = `Delete timed out for "${fileToDelete}".`;
-                this.status = 'Connected';
-                return;
+            this.prompt_busy = false;
+            this.prompt_kind = null;
+            this.prompt_value = '';
+            this.promptInputEl = undefined;
+            this.status = 'Connected';
+            this.refresh_directory();
+        } catch (err) {
+            this.prompt_busy = false;
+            this.prompt_error = this.error_text(err);
+            this.status = 'Connected';
+        }
+    }
+
+    private on_chmod_action(item: SFTPListItem, event: Event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!this.session_id) {
+            return;
+        }
+
+        this.selected_item = item;
+        this.chmod_target = item;
+        this.chmod_mode = (item.attributes.permissions ?? 0) & 0o7777;
+        this.chmod_error = '';
+        this.chmod_busy = false;
+    }
+
+    private close_chmod() {
+        if (this.chmod_busy) {
+            return;
+        }
+
+        this.chmod_target = null;
+        this.chmod_error = '';
+    }
+
+    private toggle_chmod_bit(bit: number) {
+        if (this.chmod_busy) {
+            return;
+        }
+
+        this.chmod_mode = (this.chmod_mode ^ bit) & 0o7777;
+    }
+
+    private on_chmod_octal_input(value: string) {
+        const digits = value.trim();
+
+        if (!/^[0-7]{1,4}$/.test(digits)) {
+            this.chmod_error = 'Enter up to four octal digits, 0-7.';
+            return;
+        }
+
+        this.chmod_error = '';
+        this.chmod_mode = parseInt(digits, 8) & 0o7777;
+    }
+
+    private async submit_chmod() {
+        const target = this.chmod_target;
+        if (this.chmod_busy || !this.session_id || !target) {
+            return;
+        }
+
+        const path = this.item_path(target);
+        const mode = this.chmod_mode & 0o7777;
+
+        this.chmod_busy = true;
+        this.chmod_error = '';
+        this.show_error = false;
+        this.status = `Setting permissions on ${target.name}...`;
+
+        try {
+            await this.run_op('change permissions', (msgId) =>
+                this.channel.send_sftp_chmod(this.nodeId, this.session_id!, path, mode, msgId));
+
+            this.chmod_busy = false;
+            this.chmod_target = null;
+            this.status = 'Connected';
+            this.refresh_directory();
+        } catch (err) {
+            this.chmod_busy = false;
+            this.chmod_error = this.error_text(err);
+            this.status = 'Connected';
+        }
+    }
+
+    private async on_edit_action(item: SFTPListItem, event: Event) {
+        event.preventDefault();
+        event.stopPropagation();
+
+        if (!this.session_id || item.kind !== 'File') {
+            return;
+        }
+
+        const path = this.item_path(item);
+
+        this.selected_item = item;
+        this.show_editor = true;
+        this.editorPath = path;
+        this.editor_name = item.name;
+        this.editor_text = '';
+        this.editor_saved_text = '';
+        this.editor_error = '';
+        this.editor_confirm_discard = false;
+        this.editor_loaded = false;
+        this.editor_busy = 'loading';
+        this.status = `Opening ${item.name}...`;
+
+        try {
+            const answer = await this.run_op(
+                'open the file',
+                (msgId) => this.channel.send_sftp_read_file(this.nodeId, this.session_id!, path, msgId),
+                60_000,
+            );
+
+            if (answer.result !== 'FileContents') {
+                throw new Error('The agent answered without any file contents.');
             }
 
-            if (this.session_id) {
-                this.channel.send_sftp_list_data(this.nodeId, this.session_id, this.current_dir);
+            const text = this.decode_text(
+                answer.contents instanceof Uint8Array ? answer.contents : new Uint8Array(answer.contents),
+            );
+
+            this.editor_text = text;
+            this.editor_saved_text = text;
+            this.editor_loaded = true;
+            this.editor_busy = '';
+            this.status = 'Connected';
+        } catch (err) {
+            this.editor_busy = '';
+            this.editor_error = this.error_text(err);
+            this.status = 'Connected';
+        }
+    }
+
+    /**
+     * Refuse binary rather than mangle it. A lossy decode looks fine on screen
+     * and then writes replacement characters over the real bytes on save, so
+     * anything that is not valid UTF-8 is sent to the download button instead.
+     */
+    private decode_text(bytes: Uint8Array): string {
+        if (bytes.includes(0)) {
+            throw new Error('This looks like a binary file. Download it instead of editing it here.');
+        }
+
+        try {
+            return new TextDecoder('utf-8', { fatal: true }).decode(bytes);
+        } catch {
+            throw new Error('This file is not valid UTF-8. Download it instead of editing it here.');
+        }
+    }
+
+    private editor_is_dirty(): boolean {
+        return this.editor_loaded && this.editor_text !== this.editor_saved_text;
+    }
+
+    private close_editor(force = false) {
+        if (this.editor_busy === 'saving') {
+            return;
+        }
+
+        if (!force && this.editor_is_dirty()) {
+            this.editor_confirm_discard = true;
+            return;
+        }
+
+        this.show_editor = false;
+        this.editor_confirm_discard = false;
+        this.editor_loaded = false;
+        this.editorPath = '';
+        this.editor_name = '';
+        this.editor_text = '';
+        this.editor_saved_text = '';
+        this.editor_error = '';
+        this.editor_busy = '';
+        this.editorTextEl = undefined;
+    }
+
+    private async save_editor() {
+        if (this.editor_busy || !this.session_id || !this.editorPath) {
+            return;
+        }
+
+        const path = this.editorPath;
+        const text = this.editor_text;
+
+        this.editor_busy = 'saving';
+        this.editor_error = '';
+        this.show_error = false;
+        this.status = `Saving ${this.editor_name}...`;
+
+        try {
+            await this.run_op(
+                'save the file',
+                (msgId) =>
+                    this.channel.send_sftp_write_file(
+                        this.nodeId,
+                        this.session_id!,
+                        path,
+                        new TextEncoder().encode(text),
+                        msgId,
+                    ),
+                60_000,
+            );
+
+            this.editor_saved_text = text;
+            this.editor_busy = '';
+            this.status = 'Connected';
+            this.refresh_directory();
+        } catch (err) {
+            this.editor_busy = '';
+            this.editor_error = this.error_text(err);
+            this.status = 'Connected';
+        }
+    }
+
+    private toggle_sort(key: SortKey) {
+        if (this.sort_key === key) {
+            this.sort_asc = !this.sort_asc;
+            return;
+        }
+
+        this.sort_key = key;
+        this.sort_asc = true;
+    }
+
+    /**
+     * Folders stay above files whichever way the sort runs: a listing that
+     * scatters directories through the files is harder to scan, not more sorted.
+     */
+    private visible_listing(): Array<SFTPListItem> {
+        const needle = this.filter.trim().toLowerCase();
+        const rows = needle
+            ? this.listing.filter((item) => item.name.toLowerCase().includes(needle))
+            : [...this.listing];
+
+        const direction = this.sort_asc ? 1 : -1;
+
+        return rows.sort((a, b) => {
+            if (a.kind !== b.kind) {
+                return a.kind === 'Folder' ? -1 : 1;
             }
-        };
 
-        pollOnce();
-        this.pendingDelete.interval = window.setInterval(pollOnce, 2_500);
+            switch (this.sort_key) {
+                case 'size':
+                    return direction * ((a.attributes.size ?? 0) - (b.attributes.size ?? 0));
+                case 'modified':
+                    return direction * ((a.attributes.modified ?? 0) - (b.attributes.modified ?? 0));
+                default:
+                    return direction * a.name.localeCompare(b.name, undefined, {
+                        numeric: true,
+                        sensitivity: 'base',
+                    });
+            }
+        });
+    }
 
-        this.channel.send_sftp_delete(
-            this.nodeId,
-            this.session_id,
-            this.current_dir,
-            fileToDelete,
-            msgId,
-        );
+    private sort_indicator(key: SortKey): string {
+        if (this.sort_key !== key) {
+            return '';
+        }
+
+        return this.sort_asc ? ' \u25b2' : ' \u25bc';
+    }
+
+    /** Keyboard shortcuts, scoped to the file table so the page keeps its own. */
+    private on_listing_keydown(event: KeyboardEvent) {
+        if (this.prompt_kind || this.chmod_target || this.show_editor || this.show_delete_modal) {
+            return;
+        }
+
+        const item = this.selected_item;
+
+        switch (event.key) {
+            case 'Backspace':
+                event.preventDefault();
+                this.go_to_parent_directory();
+                break;
+            case 'F5':
+                event.preventDefault();
+                this.refresh_directory();
+                break;
+            case 'F2':
+                if (item) {
+                    event.preventDefault();
+                    this.on_rename_action(item, event);
+                }
+                break;
+            case 'Delete':
+                if (item) {
+                    event.preventDefault();
+                    this.on_file_delete_action(item, event);
+                }
+                break;
+            case 'Enter':
+                if (item) {
+                    event.preventDefault();
+                    this.list_directory(item);
+                }
+                break;
+        }
+    }
+
+    private on_modal_keydown(event: KeyboardEvent, close: () => void) {
+        if (event.key === 'Escape') {
+            event.preventDefault();
+            event.stopPropagation();
+            close();
+        }
+    }
+
+    /** Focus a dialog's field as it appears, without re-focusing on every render. */
+    private focus_once<T extends HTMLElement>(el: T | null, current: T | undefined, keep: (el?: T) => void) {
+        if (!el || el === current) {
+            return;
+        }
+
+        keep(el);
+        requestAnimationFrame(() => el.focus());
     }
 
     private open_upload_picker() {
@@ -1159,7 +1735,7 @@ export class PhirepassSftpClient {
             return;
         }
 
-        const path = [entry.path, entry.name].join('/');
+        const path = this.item_path(entry);
         if (path === this.current_dir) {
             console.warn('Already in this directory. Ignoring click.');
             return;
@@ -1299,11 +1875,29 @@ export class PhirepassSftpClient {
                                 ))}
                             </div>
                             <section class="actions" aria-label="SFTP actions">
+                                <input
+                                    class="filter"
+                                    type="search"
+                                    autocorrect="off"
+                                    autocapitalize="none"
+                                    autoComplete="off"
+                                    placeholder="Filter"
+                                    aria-label="Filter this directory"
+                                    value={this.filter}
+                                    onInput={(event) => this.filter = (event.target as HTMLInputElement).value}
+                                />
                                 <button type="button" class="action" onClick={() => this.go_to_parent_directory()} title="Go to parent directory" aria-label="Go to parent directory">
                                     <img src={go_up} alt="Go up" />
                                 </button>
                                 <button type="button" class="action" onClick={() => this.refresh_directory()} title="Refresh" aria-label="Refresh">
                                     <img src={refresh} alt="Refresh" />
+                                </button>
+                                <button type="button" class="action" onClick={() => this.open_mkdir()} title="New folder" aria-label="New folder">
+                                    <svg xmlns="http://www.w3.org/2000/svg" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                        <path d="M4 20h16a2 2 0 0 0 2-2V8a2 2 0 0 0-2-2h-7.9a2 2 0 0 1-1.69-.9L9.6 3.9A2 2 0 0 0 7.93 3H4a2 2 0 0 0-2 2v13a2 2 0 0 0 2 2Z"></path>
+                                        <line x1="12" x2="12" y1="10" y2="16"></line>
+                                        <line x1="9" x2="15" y1="13" y2="13"></line>
+                                    </svg>
                                 </button>
                                 <button type="button" class="action" onClick={() => this.open_upload_picker()} title="Upload" aria-label="Upload">
                                     <img src={upload} alt="Upload" />
@@ -1319,20 +1913,24 @@ export class PhirepassSftpClient {
                             onChange={(event) => this.on_upload_selected(event)}
                             style={{ display: 'none' }}
                         />
-                        {this.show_content && <div class="content">
+                        {this.show_content && <div
+                            class="content"
+                            tabindex={0}
+                            onKeyDown={(event) => this.on_listing_keydown(event)}
+                        >
                             <table>
                                 <thead>
                                     <tr>
-                                        <th>Name</th>
-                                        <th>Size</th>
+                                        <th class="sortable" onClick={() => this.toggle_sort('name')} title="Sort by name">Name{this.sort_indicator('name')}</th>
+                                        <th class="sortable" onClick={() => this.toggle_sort('size')} title="Sort by size">Size{this.sort_indicator('size')}</th>
                                         <th>Permissions</th>
                                         <th>Owner</th>
-                                        <th>Modified</th>
+                                        <th class="sortable" onClick={() => this.toggle_sort('modified')} title="Sort by modified date">Modified{this.sort_indicator('modified')}</th>
                                         <th class="action-col" aria-label="Actions"></th>
                                     </tr>
                                 </thead>
                                 <tbody>
-                                    {this.listing.map((item, index) => (
+                                    {this.visible_listing().map((item, index) => (
                                         <tr key={index} class={{
                                             'selected': this.is_selected(item),
                                         }} onClick={() => this.list_directory(item)}>
@@ -1340,19 +1938,33 @@ export class PhirepassSftpClient {
                                                 {item.kind === 'Folder' ? <img class="kind" src={folder} alt="Folder" /> : <img class="kind" src={file} alt="File" />}
                                                 <span class={`name ${item.kind.toLowerCase()}`}>{item.name}</span>
                                             </td>
-                                            <td>{this.format_size(item.attributes.size)}</td>
+                                            <td>{item.kind === 'Folder' ? '-' : this.format_size(item.attributes.size)}</td>
                                             <td>{this.format_permissions(item.attributes.permissions, item.kind)}</td>
                                             <td>{item.attributes.user ?? '-'}</td>
                                             <td>{new Date(item.attributes.modified * 1000).toLocaleString()}</td>
                                             <td class="action-col">
-                                                {item.kind === 'File' &&
-                                                    <div class="file-actions">
+                                                <div class="file-actions">
+                                                    {item.kind === 'File' &&
+                                                        <button
+                                                            type="button"
+                                                            class="file-action"
+                                                            onClick={(event) => this.on_edit_action(item, event)}
+                                                            title="Edit"
+                                                            aria-label={`Edit ${item.name}`}
+                                                        >
+                                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                                <path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"></path>
+                                                                <path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4Z"></path>
+                                                            </svg>
+                                                        </button>
+                                                    }
+                                                    {item.kind === 'File' &&
                                                         <button
                                                             type="button"
                                                             class="file-action"
                                                             onClick={(event) => this.on_file_row_action(item, event)}
                                                             title="Download"
-                                                            aria-label="Download"
+                                                            aria-label={`Download ${item.name}`}
                                                         >
                                                             <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
                                                                 <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
@@ -1360,26 +1972,55 @@ export class PhirepassSftpClient {
                                                                 <line x1="12" x2="12" y1="15" y2="3"></line>
                                                             </svg>
                                                         </button>
-                                                        <button
-                                                            type="button"
-                                                            class="file-action delete"
-                                                            onClick={(event) => this.on_file_delete_action(item, event)}
-                                                            title="Delete"
-                                                            aria-label="Delete"
-                                                        >
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
-                                                                <polyline points="3 6 5 6 21 6"></polyline>
-                                                                <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
-                                                                <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
-                                                                <line x1="10" x2="10" y1="11" y2="17"></line>
-                                                                <line x1="14" x2="14" y1="11" y2="17"></line>
-                                                            </svg>
-                                                        </button>
-                                                    </div>
-                                                }
+                                                    }
+                                                    <button
+                                                        type="button"
+                                                        class="file-action"
+                                                        onClick={(event) => this.on_rename_action(item, event)}
+                                                        title="Rename"
+                                                        aria-label={`Rename ${item.name}`}
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                            <path d="M12 20h9"></path>
+                                                            <path d="M16.5 3.5a2.12 2.12 0 0 1 3 3L7 19l-4 1 1-4Z"></path>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="file-action"
+                                                        onClick={(event) => this.on_chmod_action(item, event)}
+                                                        title="Permissions"
+                                                        aria-label={`Change permissions on ${item.name}`}
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                            <rect width="18" height="11" x="3" y="11" rx="2" ry="2"></rect>
+                                                            <path d="M7 11V7a5 5 0 0 1 10 0v4"></path>
+                                                        </svg>
+                                                    </button>
+                                                    <button
+                                                        type="button"
+                                                        class="file-action delete"
+                                                        onClick={(event) => this.on_file_delete_action(item, event)}
+                                                        title="Delete"
+                                                        aria-label={`Delete ${item.name}`}
+                                                    >
+                                                        <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true">
+                                                            <polyline points="3 6 5 6 21 6"></polyline>
+                                                            <path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+                                                            <path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"></path>
+                                                            <line x1="10" x2="10" y1="11" y2="17"></line>
+                                                            <line x1="14" x2="14" y1="11" y2="17"></line>
+                                                        </svg>
+                                                    </button>
+                                                </div>
                                             </td>
                                         </tr>
                                     ))}
+                                    {this.visible_listing().length === 0 &&
+                                        <tr class="empty">
+                                            <td colSpan={6}>{this.filter ? `Nothing here matches "${this.filter}".` : 'This directory is empty.'}</td>
+                                        </tr>
+                                    }
                                 </tbody>
                             </table>
                         </div>}
@@ -1387,6 +2028,10 @@ export class PhirepassSftpClient {
                         {this.show_error && <div class="error">{this.error_message}</div>}
                     </main>
                     <footer>
+                        <section class="status">
+                            {this.status}
+                            {this.selected_item && <span class="selected-item">{this.selected_item.name}</span>}
+                        </section>
                         <section class="version">{this.version ? `Version: ${this.version}` : ''}</section>
                     </footer>
                 </section>
@@ -1498,10 +2143,36 @@ export class PhirepassSftpClient {
                         'delete-modal': true,
                         'visible': this.show_delete_modal,
                     }}>
-                        <div class="delete-dialog" role="dialog" aria-modal="true" aria-label="Delete confirmation">
-                            <div class="title">Delete File</div>
-                            <div class="message">{this.delete_loading ? 'Deleting file...' : 'Are you sure you want to delete this file?'}</div>
+                        <div
+                            class="delete-dialog"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label="Delete confirmation"
+                            tabindex={-1}
+                            onKeyDown={(event) => this.on_modal_keydown(event, () => this.cancel_delete())}
+                        >
+                            <div class="title">{this.delete_is_dir ? 'Delete Folder' : 'Delete File'}</div>
+                            <div class="message">
+                                {this.delete_loading
+                                    ? (this.delete_recursive ? 'Deleting the folder and everything in it...' : 'Deleting...')
+                                    : `Are you sure you want to delete this ${this.delete_is_dir ? 'folder' : 'file'}?`}
+                            </div>
                             <div class="file-name" title={this.delete_file_name}>{this.delete_file_name}</div>
+                            {this.delete_is_dir &&
+                                <label class="checkline">
+                                    <input
+                                        type="checkbox"
+                                        checked={this.delete_recursive}
+                                        disabled={this.delete_loading}
+                                        onChange={(event) => this.delete_recursive = (event.target as HTMLInputElement).checked}
+                                    />
+                                    <span>Delete everything inside it too</span>
+                                </label>
+                            }
+                            {!this.delete_is_dir || this.delete_recursive ? null :
+                                <div class="hint">Without this, the remote refuses a folder that is not empty.</div>
+                            }
+                            {this.delete_error && <div class="dialog-error">{this.delete_error}</div>}
                             {this.delete_loading &&
                                 <div class="delete-loader" aria-hidden="true">
                                     <span class="spinner"></span>
@@ -1510,6 +2181,192 @@ export class PhirepassSftpClient {
                             <div class="modal-actions">
                                 <button type="button" class="btn secondary" onClick={() => this.cancel_delete()} disabled={this.delete_loading}>Cancel</button>
                                 <button type="button" class="btn destructive" onClick={() => this.confirm_delete()} disabled={this.delete_loading}>{this.delete_loading ? 'Deleting...' : 'Delete'}</button>
+                            </div>
+                        </div>
+                    </section>
+                }
+                {this.prompt_kind &&
+                    <section class="prompt-modal visible">
+                        <div
+                            class="prompt-dialog"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label={this.prompt_kind === 'mkdir' ? 'New folder' : 'Rename'}
+                            tabindex={-1}
+                            onKeyDown={(event) => this.on_modal_keydown(event, () => this.close_prompt())}
+                        >
+                            <div class="title">{this.prompt_kind === 'mkdir' ? 'New Folder' : 'Rename'}</div>
+                            <div class="message">
+                                {this.prompt_kind === 'mkdir'
+                                    ? `Create a folder in ${this.current_dir}`
+                                    : 'Give it a new name. Existing names are not overwritten.'}
+                            </div>
+                            <form onSubmit={(event) => { event.preventDefault(); event.stopPropagation(); void this.submit_prompt(); }}>
+                                <input
+                                    class="dialog-input"
+                                    type="text"
+                                    autocorrect="off"
+                                    autocapitalize="none"
+                                    autoComplete="off"
+                                    spellcheck={false}
+                                    aria-label="Name"
+                                    disabled={this.prompt_busy}
+                                    value={this.prompt_value}
+                                    onInput={(event) => this.prompt_value = (event.target as HTMLInputElement).value}
+                                    ref={(el) => this.focus_once(el as HTMLInputElement, this.promptInputEl, (kept) => this.promptInputEl = kept)}
+                                />
+                                {this.prompt_error && <div class="dialog-error">{this.prompt_error}</div>}
+                                <div class="modal-actions">
+                                    <button type="button" class="btn secondary" onClick={() => this.close_prompt()} disabled={this.prompt_busy}>Cancel</button>
+                                    <button type="submit" class="btn primary" disabled={this.prompt_busy}>
+                                        {this.prompt_busy ? 'Working...' : (this.prompt_kind === 'mkdir' ? 'Create' : 'Rename')}
+                                    </button>
+                                </div>
+                            </form>
+                        </div>
+                    </section>
+                }
+                {this.chmod_target &&
+                    <section class="prompt-modal visible">
+                        <div
+                            class="prompt-dialog"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label="Change permissions"
+                            tabindex={-1}
+                            onKeyDown={(event) => this.on_modal_keydown(event, () => this.close_chmod())}
+                        >
+                            <div class="title">Permissions</div>
+                            <div class="file-name" title={this.chmod_target.name}>{this.chmod_target.name}</div>
+                            <table class="perm-grid">
+                                <thead>
+                                    <tr>
+                                        <th aria-label="Class"></th>
+                                        <th>Read</th>
+                                        <th>Write</th>
+                                        <th>Execute</th>
+                                    </tr>
+                                </thead>
+                                <tbody>
+                                    {[
+                                        { label: 'Owner', read: 0o400, write: 0o200, exec: 0o100 },
+                                        { label: 'Group', read: 0o040, write: 0o020, exec: 0o010 },
+                                        { label: 'Other', read: 0o004, write: 0o002, exec: 0o001 },
+                                    ].map((row) => (
+                                        <tr key={row.label}>
+                                            <th scope="row">{row.label}</th>
+                                            {[row.read, row.write, row.exec].map((bit) => (
+                                                <td key={bit}>
+                                                    <input
+                                                        type="checkbox"
+                                                        aria-label={`${row.label} ${bit}`}
+                                                        disabled={this.chmod_busy}
+                                                        checked={(this.chmod_mode & bit) !== 0}
+                                                        onChange={() => this.toggle_chmod_bit(bit)}
+                                                    />
+                                                </td>
+                                            ))}
+                                        </tr>
+                                    ))}
+                                </tbody>
+                            </table>
+                            <div class="perm-special">
+                                {[
+                                    { label: 'setuid', bit: 0o4000 },
+                                    { label: 'setgid', bit: 0o2000 },
+                                    { label: 'sticky', bit: 0o1000 },
+                                ].map((special) => (
+                                    <label key={special.label} class="checkline">
+                                        <input
+                                            type="checkbox"
+                                            disabled={this.chmod_busy}
+                                            checked={(this.chmod_mode & special.bit) !== 0}
+                                            onChange={() => this.toggle_chmod_bit(special.bit)}
+                                        />
+                                        <span>{special.label}</span>
+                                    </label>
+                                ))}
+                            </div>
+                            <div class="perm-octal">
+                                <label htmlFor="chmod-octal">Octal</label>
+                                <input
+                                    id="chmod-octal"
+                                    class="dialog-input"
+                                    type="text"
+                                    autocorrect="off"
+                                    autocapitalize="none"
+                                    autoComplete="off"
+                                    spellcheck={false}
+                                    maxlength={4}
+                                    disabled={this.chmod_busy}
+                                    value={this.chmod_mode.toString(8).padStart(4, '0')}
+                                    onInput={(event) => this.on_chmod_octal_input((event.target as HTMLInputElement).value)}
+                                />
+                                <span class="perm-preview">{this.format_permissions(this.chmod_mode, this.chmod_target.kind)}</span>
+                            </div>
+                            {this.chmod_error && <div class="dialog-error">{this.chmod_error}</div>}
+                            <div class="modal-actions">
+                                <button type="button" class="btn secondary" onClick={() => this.close_chmod()} disabled={this.chmod_busy}>Cancel</button>
+                                <button type="button" class="btn primary" onClick={() => void this.submit_chmod()} disabled={this.chmod_busy}>
+                                    {this.chmod_busy ? 'Applying...' : 'Apply'}
+                                </button>
+                            </div>
+                        </div>
+                    </section>
+                }
+                {this.show_editor &&
+                    <section class="editor-modal visible">
+                        <div
+                            class="editor-dialog"
+                            role="dialog"
+                            aria-modal="true"
+                            aria-label={`Editing ${this.editor_name}`}
+                            tabindex={-1}
+                            onKeyDown={(event) => {
+                                if ((event.ctrlKey || event.metaKey) && event.key === 's') {
+                                    event.preventDefault();
+                                    void this.save_editor();
+                                    return;
+                                }
+                                this.on_modal_keydown(event, () => this.close_editor());
+                            }}
+                        >
+                            <div class="editor-head">
+                                <div class="title">{this.editor_name}{this.editor_is_dirty() ? ' *' : ''}</div>
+                                <button type="button" class="editor-close" onClick={() => this.close_editor()} aria-label="Close editor" disabled={this.editor_busy === 'saving'}>x</button>
+                            </div>
+                            {this.editor_busy === 'loading'
+                                ? <div class="editor-loading">Loading...</div>
+                                : <textarea
+                                    class="editor-text"
+                                    spellcheck={false}
+                                    autocorrect="off"
+                                    autocapitalize="none"
+                                    autoComplete="off"
+                                    aria-label="File contents"
+                                    disabled={this.editor_busy === 'saving' || !this.editor_loaded}
+                                    value={this.editor_text}
+                                    onInput={(event) => this.editor_text = (event.target as HTMLTextAreaElement).value}
+                                    ref={(el) => this.focus_once(el as HTMLTextAreaElement, this.editorTextEl, (kept) => this.editorTextEl = kept)}
+                                ></textarea>
+                            }
+                            {this.editor_error && <div class="dialog-error">{this.editor_error}</div>}
+                            {this.editor_confirm_discard &&
+                                <div class="dialog-error">Unsaved changes. Close anyway?</div>
+                            }
+                            <div class="modal-actions">
+                                {this.editor_confirm_discard
+                                    ? <button type="button" class="btn destructive" onClick={() => this.close_editor(true)}>Discard</button>
+                                    : <button type="button" class="btn secondary" onClick={() => this.close_editor()} disabled={this.editor_busy === 'saving'}>Close</button>
+                                }
+                                <button
+                                    type="button"
+                                    class="btn primary"
+                                    onClick={() => void this.save_editor()}
+                                    disabled={!!this.editor_busy || !this.editor_is_dirty()}
+                                >
+                                    {this.editor_busy === 'saving' ? 'Saving...' : 'Save'}
+                                </button>
                             </div>
                         </div>
                     </section>

@@ -102,6 +102,22 @@ export type ProtocolMessageWebSFTPUploadStartResponse = {
     type: 'SFTPUploadStartResponse';
 };
 
+/**
+ * The answer to a one-shot filesystem operation — mkdir, rename, chmod, remove,
+ * read, write. A failure comes back as a plain `Error` frame carrying the same
+ * `msg_id` instead, so this type has no failure shape.
+ *
+ * `contents` is the raw bytes of the file, as a plain array over the wire.
+ */
+export type ProtocolMessageWebSFTPOpResult = {
+    sid: number;
+    msg_id?: number;
+    result:
+        | { result: 'Done' }
+        | { result: 'FileContents'; path: string; contents: number[] | Uint8Array };
+    type: 'SFTPOpResult';
+};
+
 export type ProtocolMessageWebSFTPUploadChunkAck = {
     msg_id?: number;
     upload_id: number;
@@ -124,7 +140,8 @@ export type ProtocolMessage = {
             | ProtocolMessageWebSFTPDownloadStartResponse
             | ProtocolMessageWebSFTPDownloadChunk
             | ProtocolMessageWebSFTPUploadStartResponse
-            | ProtocolMessageWebSFTPUploadChunkAck;
+            | ProtocolMessageWebSFTPUploadChunkAck
+            | ProtocolMessageWebSFTPOpResult;
     };
 };
 
@@ -140,6 +157,7 @@ export enum ProtocolMessageType {
     SFTPDownloadChunk = 'SFTPDownloadChunk',
     SFTPUploadStartResponse = 'SFTPUploadStartResponse',
     SFTPUploadChunkAck = 'SFTPUploadChunkAck',
+    SFTPOpResult = 'SFTPOpResult',
 }
 
 export enum InputMode {

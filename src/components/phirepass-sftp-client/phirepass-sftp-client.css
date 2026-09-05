@@ -196,6 +196,27 @@
                     gap: 8px;
                 }
 
+                .filter {
+                    height: 1.5rem;
+                    width: 110px;
+                    padding: 0 6px;
+                    font: inherit;
+                    font-size: 0.68rem;
+                    color: rgb(189, 219, 209);
+                    background-color: hsl(var(--muted));
+                    border: 1px solid hsl(var(--border));
+                    border-radius: calc(var(--radius) - 2px);
+                    outline: none;
+
+                    &::placeholder {
+                        color: hsl(var(--muted-foreground));
+                    }
+
+                    &:focus {
+                        border-color: hsl(var(--primary));
+                    }
+                }
+
                 .action {
                     border: none;
                     background: transparent;
@@ -233,6 +254,14 @@
             .content {
                 flex: 1;
                 min-height: 0;
+                outline: none;
+
+                /* The table takes keyboard focus for F2/Delete/Backspace, so
+                   it has to say when it has it — without a browser default
+                   ring drawn across the whole scroll area. */
+                &:focus-visible {
+                    box-shadow: inset 0 0 0 1px hsl(var(--primary) / 0.5);
+                }
                 overflow: auto;
                 font-size: 0.75rem;
                 line-height: 1rem;
@@ -268,6 +297,15 @@
                         background-color: hsl(var(--muted));
                         border-bottom: 1px solid hsl(var(--border));
 
+                        th.sortable {
+                            cursor: pointer;
+                            user-select: none;
+
+                            &:hover {
+                                color: hsl(var(--primary));
+                            }
+                        }
+
                         th {
                             padding: 8px 10px;
                             text-align: left;
@@ -302,6 +340,21 @@
                     }
 
                     tbody {
+
+                        tr.empty {
+                            cursor: default;
+
+                            td {
+                                color: hsl(var(--muted-foreground));
+                                text-align: center;
+                                padding: 18px 8px;
+                            }
+
+                            &:hover {
+                                background: transparent;
+                            }
+                        }
+
                         padding: 10px 10px;
                         tr {
                             border-bottom: 1px solid hsl(var(--border) / 0.4);
@@ -542,7 +595,8 @@
 
     .upload-modal,
     .download-modal,
-    .delete-modal {
+    .delete-modal,
+    .prompt-modal {
         position: absolute;
         inset: 0;
         display: none;
@@ -558,7 +612,8 @@
 
         .upload-dialog,
         .download-dialog,
-        .delete-dialog {
+        .delete-dialog,
+        .prompt-dialog {
             width: min(360px, calc(100% - 24px));
             background-color: rgba(21, 24, 30, 0.96);
             border: 1px solid hsl(var(--border));
@@ -705,6 +760,131 @@
                 }
             }
 
+            .dialog-input {
+                width: 100%;
+                box-sizing: border-box;
+                height: 2rem;
+                padding: 0 8px;
+                font: inherit;
+                font-size: 0.75rem;
+                color: rgb(189, 219, 209);
+                background-color: hsl(var(--muted));
+                border: 1px solid hsl(var(--border));
+                border-radius: calc(var(--radius) - 2px);
+                outline: none;
+
+                &:focus {
+                    border-color: hsl(var(--primary));
+                }
+
+                &:disabled {
+                    opacity: 0.65;
+                }
+            }
+
+            .dialog-error {
+                margin-top: 8px;
+                font-size: 0.7rem;
+                line-height: 0.95rem;
+                color: #ff6b7a;
+            }
+
+            .hint {
+                margin-top: 4px;
+                font-size: 0.66rem;
+                line-height: 0.9rem;
+                color: hsl(var(--muted-foreground));
+            }
+
+            .checkline {
+                margin-top: 8px;
+                display: flex;
+                align-items: center;
+                gap: 6px;
+                font-size: 0.72rem;
+                color: rgb(189, 219, 209);
+                cursor: pointer;
+
+                input {
+                    accent-color: hsl(var(--primary));
+                    margin: 0;
+                }
+            }
+
+            .perm-grid {
+                margin-top: 10px;
+                width: 100%;
+                border-collapse: collapse;
+                font-size: 0.68rem;
+
+                th {
+                    color: hsl(var(--muted-foreground));
+                    font-weight: normal;
+                    text-align: center;
+                    padding: 2px 0;
+                }
+
+                th[scope='row'] {
+                    text-align: left;
+                    color: rgb(189, 219, 209);
+                }
+
+                td {
+                    text-align: center;
+                    padding: 2px 0;
+                }
+
+                input {
+                    accent-color: hsl(var(--primary));
+                    margin: 0;
+                }
+            }
+
+            .perm-special {
+                margin-top: 4px;
+                display: flex;
+                gap: 12px;
+
+                .checkline {
+                    margin-top: 4px;
+                    font-size: 0.66rem;
+                }
+            }
+
+            .perm-octal {
+                margin-top: 10px;
+                display: flex;
+                align-items: center;
+                gap: 8px;
+
+                label {
+                    font-size: 0.68rem;
+                    color: hsl(var(--muted-foreground));
+                }
+
+                .dialog-input {
+                    width: 4.5rem;
+                    text-align: center;
+                    letter-spacing: 0.1em;
+                }
+
+                .perm-preview {
+                    font-size: 0.7rem;
+                    color: hsl(var(--primary));
+                }
+            }
+
+            .modal-actions .btn.primary {
+                background: hsl(var(--primary));
+                border-color: hsl(var(--primary));
+                color: hsl(var(--primary-foreground));
+
+                &:hover:not(:disabled) {
+                    background: hsl(var(--primary) / 0.9);
+                    border-color: hsl(var(--primary) / 0.9);
+                }
+            }
+
             .delete-loader {
                 margin-top: 4px;
                 display: flex;
@@ -717,6 +897,166 @@
                     border-top-color: hsl(var(--primary));
                     border-radius: 50%;
                     animation: spin 0.7s linear infinite;
+                }
+            }
+        }
+    }
+
+    /* The editor is the one dialog that wants the whole widget: a 360px column
+       is unusable for anything with indentation. */
+    .editor-modal {
+        position: absolute;
+        inset: 0;
+        display: none;
+        align-items: center;
+        justify-content: center;
+        background: rgba(28, 31, 38, 0);
+        backdrop-filter: blur(4px);
+        z-index: 7;
+
+        &.visible {
+            display: flex;
+        }
+
+        .editor-dialog {
+            width: min(860px, calc(100% - 24px));
+            height: min(620px, calc(100% - 24px));
+            display: flex;
+            flex-direction: column;
+            background-color: rgba(21, 24, 30, 0.98);
+            border: 1px solid hsl(var(--border));
+            border-radius: var(--radius);
+            padding: 16px;
+            box-shadow: rgba(0, 0, 0, 0.5) 0px 25px 50px -12px;
+            outline: none;
+
+            .editor-head {
+                display: flex;
+                align-items: center;
+                justify-content: space-between;
+                gap: 8px;
+
+                .title {
+                    color: hsl(var(--primary));
+                    font-size: 0.8rem;
+                    margin-bottom: 8px;
+                    overflow: hidden;
+                    text-overflow: ellipsis;
+                    white-space: nowrap;
+                }
+
+                .editor-close {
+                    border: none;
+                    background: transparent;
+                    color: hsl(var(--muted-foreground));
+                    font-size: 0.85rem;
+                    line-height: 1;
+                    padding: 2px 6px;
+                    border-radius: 4px;
+                    cursor: pointer;
+
+                    &:hover:not(:disabled) {
+                        color: hsl(var(--primary));
+                        background-color: hsl(var(--border) / 0.6);
+                    }
+
+                    &:disabled {
+                        opacity: 0.5;
+                        cursor: not-allowed;
+                    }
+                }
+            }
+
+            .editor-loading {
+                flex: 1;
+                display: flex;
+                align-items: center;
+                justify-content: center;
+                font-size: 0.75rem;
+                color: hsl(var(--muted-foreground));
+            }
+
+            .editor-text {
+                flex: 1;
+                min-height: 0;
+                width: 100%;
+                box-sizing: border-box;
+                resize: none;
+                padding: 10px;
+                font: inherit;
+                font-size: 0.75rem;
+                line-height: 1.15rem;
+                tab-size: 4;
+                white-space: pre;
+                overflow: auto;
+                color: rgb(189, 219, 209);
+                background-color: hsl(var(--muted));
+                border: 1px solid hsl(var(--border));
+                border-radius: calc(var(--radius) - 2px);
+                outline: none;
+
+                &:focus {
+                    border-color: hsl(var(--primary) / 0.6);
+                }
+
+                &:disabled {
+                    opacity: 0.65;
+                }
+            }
+
+            .dialog-error {
+                margin-top: 8px;
+                font-size: 0.7rem;
+                line-height: 0.95rem;
+                color: #ff6b7a;
+            }
+
+            .modal-actions {
+                margin-top: 14px;
+                display: flex;
+                justify-content: flex-end;
+                gap: 8px;
+
+                .btn {
+                    height: 2rem;
+                    min-width: 6rem;
+                    border: 1px solid hsl(var(--border));
+                    border-radius: calc(var(--radius) - 2px);
+                    font-size: 0.75rem;
+                    letter-spacing: 0.03em;
+                    cursor: pointer;
+
+                    &:disabled {
+                        opacity: 0.65;
+                        cursor: not-allowed;
+                    }
+                }
+
+                .btn.secondary {
+                    background: hsl(var(--muted));
+                    color: rgb(189, 219, 209);
+
+                    &:hover:not(:disabled) {
+                        border-color: hsl(var(--primary));
+                        color: hsl(var(--primary));
+                    }
+                }
+
+                .btn.destructive {
+                    background: hsl(var(--destructive));
+                    border-color: hsl(var(--destructive));
+                    color: white;
+                }
+
+                .btn.primary {
+                    background: hsl(var(--primary));
+                    border-color: hsl(var(--primary));
+                    color: hsl(var(--primary-foreground));
+
+                    &:hover:not(:disabled) {
+                        background: hsl(var(--primary) / 0.9);
+                        border-color: hsl(var(--primary) / 0.9);
+                    }
                 }
             }
         }
