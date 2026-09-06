@@ -7,6 +7,11 @@
     overflow: hidden;
     position: relative;
     background: #0b1021;
+
+    /* What the compact rules at the end of this file are measured against. The
+       widget is embedded, so the viewport is not its width — the panel it was
+       given is. */
+    container-type: inline-size;
 }
 
 .screen {
@@ -88,4 +93,47 @@
     font-family: "Berkeley Mono", "Fira Code", "SFMono-Regular", Menlo, monospace;
     font-size: 0.8125rem;
     text-align: center;
+}
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Compact
+ *
+ * A panel this narrow is a phone, and the credential prompt is the only part of
+ * this widget the widget itself draws — the desktop is IronRDP's canvas, and
+ * Ctrl+Alt+Del, Meta and fullscreen are already `@Method()`s for the app's own
+ * toolbar to call, so there is deliberately no second toolbar in here.
+ *
+ * A width query rather than a device one, so the widget never asks about the
+ * device it landed on.
+ * ───────────────────────────────────────────────────────────────────────────*/
+
+@container (max-width: 640px) {
+    .prompt {
+        padding: 1rem;
+        gap: 0.4rem;
+    }
+
+    .prompt input {
+        /* `min-width: 16rem` is wider than the content box of a 320px phone
+           once the padding is counted, which pushes the form off its own edge. */
+        min-width: 0;
+        width: 100%;
+        max-width: 22rem;
+        /* iOS zooms the page in when a field smaller than 16px takes focus, and
+           the viewport does not zoom back out on blur. */
+        font-size: 16px;
+        padding: 0.625rem 0.75rem;
+    }
+
+    .prompt button {
+        width: 100%;
+        max-width: 22rem;
+        padding: 0.75rem 1.25rem;
+    }
+
+    .status {
+        font-size: 0.75rem;
+        padding: 0.5rem;
+        padding-bottom: calc(0.5rem + env(safe-area-inset-bottom));
+    }
 }

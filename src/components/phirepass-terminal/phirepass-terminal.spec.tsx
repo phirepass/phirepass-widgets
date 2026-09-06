@@ -117,6 +117,66 @@ describe('phirepass-terminal', () => {
         expect((root as any).allowInsecure).toBe(false);
     });
 
+    /**
+     * The bar is shown by a container query, so its visibility is not
+     * observable in jsdom — what is observable, and what actually matters, is
+     * that the keys are in the DOM to be shown, that a modifier reports its own
+     * state, and that an embedder can force the decision either way.
+     */
+    describe('on-screen key bar', () => {
+        const keys = (root: HTMLElement) =>
+            Array.from(root.shadowRoot!.querySelectorAll('.keys .key')) as HTMLButtonElement[];
+
+        it('renders the modifiers, the escapes and the arrows', async () => {
+            const { root } = await render(h('phirepass-terminal', {}));
+            const labels = keys(root).map((key) => key.getAttribute('aria-label'));
+
+            expect(labels).toEqual([
+                'Control',
+                'Alt',
+                'Escape',
+                'Tab',
+                'Slash',
+                'Hyphen',
+                'Pipe',
+                'Tilde',
+                'Left arrow',
+                'Down arrow',
+                'Up arrow',
+                'Right arrow',
+            ]);
+        });
+
+        it('arms and disarms a modifier, and says which it is', async () => {
+            const { root, waitForChanges } = await render(h('phirepass-terminal', {}));
+            const ctrl = keys(root).find((key) => key.getAttribute('aria-label') === 'Control')!;
+
+            expect(ctrl.getAttribute('aria-pressed')).toBe('false');
+            expect(ctrl.classList.contains('armed')).toBe(false);
+
+            ctrl.click();
+            await waitForChanges();
+            expect(ctrl.getAttribute('aria-pressed')).toBe('true');
+            expect(ctrl.classList.contains('armed')).toBe(true);
+
+            ctrl.click();
+            await waitForChanges();
+            expect(ctrl.getAttribute('aria-pressed')).toBe('false');
+        });
+
+        it('lets an embedder override the width decision in both directions', async () => {
+            const auto = await render(h('phirepass-terminal', {}));
+            expect(auto.root.classList.contains('keys-on')).toBe(false);
+            expect(auto.root.classList.contains('keys-off')).toBe(false);
+
+            const on = await render(h('phirepass-terminal', { keyBar: 'on' }));
+            expect(on.root.classList.contains('keys-on')).toBe(true);
+
+            const off = await render(h('phirepass-terminal', { keyBar: 'off' }));
+            expect(off.root.classList.contains('keys-off')).toBe(true);
+        });
+    });
+
     describe('props', () => {
         it('accepts custom serverHost prop', async () => {
             const { root, waitForChanges } = await render(h('phirepass-terminal', { serverHost: 'test.example.com' }));

@@ -133,6 +133,11 @@ export namespace Components {
           * @default 30_000
          */
         "heartbeatInterval": number;
+        /**
+          * Whether to draw the on-screen key bar.  `auto` shows it wherever the pointer is coarse, which is the whole of the decision on a phone and none of it on a desktop — so it is answered in CSS (`@media (pointer: coarse)`) rather than by sniffing the user agent here. `on` and `off` exist because an embedder may know better: a tablet with a keyboard case reports a coarse pointer and does not need this.
+          * @default 'auto'
+         */
+        "keyBar": 'auto' | 'on' | 'off';
         "nodeId": string;
         /**
           * @default "phirepass.com"
@@ -340,6 +345,11 @@ declare namespace LocalJSX {
           * @default 30_000
          */
         "heartbeatInterval"?: number;
+        /**
+          * Whether to draw the on-screen key bar.  `auto` shows it wherever the pointer is coarse, which is the whole of the decision on a phone and none of it on a desktop — so it is answered in CSS (`@media (pointer: coarse)`) rather than by sniffing the user agent here. `on` and `off` exist because an embedder may know better: a tablet with a keyboard case reports a coarse pointer and does not need this.
+          * @default 'auto'
+         */
+        "keyBar"?: 'auto' | 'on' | 'off';
         "nodeId": string;
         "onConnectionStateChanged"?: (event: PhirepassTerminalCustomEvent<[ConnectionState, unknown?]>) => void;
         /**
@@ -397,6 +407,7 @@ declare namespace LocalJSX {
         "nodeId": string;
         "serviceId": string;
         "token": string;
+        "keyBar": 'auto' | 'on' | 'off';
         "serverId": string;
     }
 

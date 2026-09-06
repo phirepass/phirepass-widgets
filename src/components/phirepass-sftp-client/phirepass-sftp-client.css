@@ -1126,3 +1126,135 @@
         max-width: 120px;
     }
 }
+
+/* ─────────────────────────────────────────────────────────────────────────────
+ * Compact
+ *
+ * Everything above answers "how wide is the panel", and so does this: the
+ * widget is embedded, the viewport is not its width, and a panel narrow enough
+ * to drop four columns is a panel being driven by a thumb. That is the whole
+ * of the reasoning — no `@media`, because the widget has no business asking
+ * about the device it landed on. An embedder that knows better sizes it.
+ *
+ * The row actions are why this block exists. They are `opacity: 0` until
+ * `tr:hover`, and a finger never hovers: at this width, rename, download and
+ * delete are not merely small, they cannot be reached at all.
+ * ───────────────────────────────────────────────────────────────────────────*/
+
+@container (max-width: 635px) {
+    :host .listing main .content table tbody tr td.action-col .file-action {
+        opacity: 1;
+        visibility: visible;
+        pointer-events: auto;
+
+        /* 16px squares revealed on hover were two separate ways of being
+           unusable; this is a target a fingertip can find. */
+        width: 36px;
+        height: 36px;
+        border-radius: 8px;
+    }
+
+    :host .listing main .content table tbody tr td.action-col .file-action svg {
+        width: 17px;
+        height: 17px;
+    }
+
+    :host .listing main .content table thead th.action-col,
+    :host .listing main .content table tbody td.action-col {
+        width: 92px;
+        min-width: 92px;
+    }
+
+    :host .listing main .content table tbody td.action-col .file-actions {
+        gap: 4px;
+    }
+
+    /* Hover styling that cannot be dismissed reads as a stuck selection here,
+       where the last-tapped row keeps it until something else is tapped.
+       Selection still marks itself — that is `tr.selected`. */
+    :host .listing main .content table tbody tr:hover {
+        background-color: transparent;
+    }
+
+    :host .listing main .content table tbody tr.selected:hover {
+        background-color: hsl(var(--primary) / 0.3);
+    }
+
+    /* A row you can put a fingertip on. */
+    :host .listing main .content table tbody td {
+        padding: 13px 10px 12px;
+    }
+
+    :host .listing main .content table thead th {
+        padding: 12px 10px;
+    }
+
+    /* The toolbar: 14px glyphs with 2px of padding, in a 25px strip. */
+    :host .listing main .navigation {
+        height: auto;
+        min-height: 44px;
+        padding: 6px 8px;
+    }
+
+    :host .listing main .navigation .action {
+        padding: 10px;
+        border-radius: 8px;
+    }
+
+    :host .listing main .navigation .action img {
+        height: 17px;
+        width: 17px;
+    }
+
+    :host .listing main .navigation .action.disconnect {
+        padding: 10px 12px;
+    }
+
+    /* 16px is not a taste decision: iOS zooms the page in when a field smaller
+       than that takes focus, and the viewport does not zoom back out on blur. */
+    :host .listing main .navigation .filter {
+        height: 2.25rem;
+        font-size: 16px;
+        width: 8rem;
+    }
+
+    :host .listing header .actions .action {
+        padding: 8px;
+    }
+
+    :host .listing header .actions .action img {
+        height: 17px;
+    }
+
+    /* A dialog button is the end of a transfer somebody is waiting on. Missing
+       Cancel by four pixels is worse here than anywhere else in the widget. */
+    :host .modal .upload-dialog .cancel,
+    :host .modal .download-dialog .cancel,
+    :host .modal .delete-dialog .cancel,
+    :host .modal .prompt-dialog .cancel,
+    :host .modal .upload-dialog .modal-actions .btn,
+    :host .modal .download-dialog .modal-actions .btn,
+    :host .modal .delete-dialog .modal-actions .btn,
+    :host .modal .prompt-dialog .modal-actions .btn {
+        height: 2.75rem;
+    }
+
+    :host .modal .prompt-dialog .dialog-input,
+    :host .auth input {
+        height: 2.5rem;
+        font-size: 16px;
+    }
+
+    /* A checkbox does not grow with its font, so the permission grid is scaled
+       rather than restyled. */
+    :host .modal .prompt-dialog .perm-grid input,
+    :host .modal .prompt-dialog .perm-special input {
+        width: 20px;
+        height: 20px;
+    }
+
+    :host .modal .prompt-dialog .perm-grid td,
+    :host .modal .prompt-dialog .perm-grid th {
+        padding: 7px 0;
+    }
+}

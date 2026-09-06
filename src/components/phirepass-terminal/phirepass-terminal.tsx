@@ -1,4 +1,4 @@
-import { Component, Host, h, Element, Prop, Watch } from '@stencil/core';
+import { Component, Host, h, Element, Prop, State, Watch } from '@stencil/core';
 import { Event, EventEmitter } from '@stencil/core';
 import { Terminal } from '@xterm/xterm';
 import { FitAddon } from '@xterm/addon-fit';
@@ -9,6 +9,42 @@ import { SerializeAddon } from '@xterm/addon-serialize';
 import { ImageAddon, IImageAddonOptions } from '@xterm/addon-image';
 import init, { Channel as PhirepassChannel } from 'phirepass-channel';
 import { ConnectionState, InputMode, ProtocolMessage, ProtocolMessageError, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
+
+/**
+ * The control character a key produces when Ctrl is held.
+ *
+ * ASCII was laid out so that this is arithmetic rather than a table: the
+ * control codes are the printable ones with bit 6 cleared, which is why Ctrl-C
+ * is 3 and Ctrl-[ is Escape. Anything with no control form answers `null`, and
+ * the caller sends the key unchanged.
+ */
+function control_char(key: string): string | null {
+    if (key.length !== 1) return null;
+
+    const upper = key.toUpperCase();
+    const code = upper.charCodeAt(0);
+
+    // @ A-Z [ \ ] ^ _ — a contiguous run, 0x40 to 0x5f, mapping to 0x00-0x1f.
+    if (code >= 0x40 && code <= 0x5f) return String.fromCharCode(code - 0x40);
+
+    // Ctrl-Space is NUL, by the same convention every terminal follows.
+    if (key === ' ') return '\u0000';
+
+    // Ctrl-? is Delete, which is the one case that does not fit the run above.
+    if (key === '?') return '\u007f';
+
+    return null;
+}
+
+/** The bar, left to right. `label` is what is drawn; `hint` is for a screen reader. */
+const KEY_BAR_KEYS = [
+    { id: 'esc', label: 'esc', hint: 'Escape', data: '\u001b' },
+    { id: 'tab', label: 'tab', hint: 'Tab', data: '\t' },
+    { id: 'slash', label: '/', hint: 'Slash', data: '/' },
+    { id: 'dash', label: '-', hint: 'Hyphen', data: '-' },
+    { id: 'pipe', label: '|', hint: 'Pipe', data: '|' },
+    { id: 'tilde', label: '~', hint: 'Tilde', data: '~' },
+] as const;
 
 @Component({
     tag: 'phirepass-terminal',
@@ -127,6 +163,31 @@ export class PhirepassTerminal {
 
     @Prop()
     token!: string;
+
+    /**
+     * Whether to draw the on-screen key bar.
+     *
+     * `auto` shows it wherever the pointer is coarse, which is the whole of the
+     * decision on a phone and none of it on a desktop — so it is answered in
+     * CSS (`@media (pointer: coarse)`) rather than by sniffing the user agent
+     * here. `on` and `off` exist because an embedder may know better: a tablet
+     * with a keyboard case reports a coarse pointer and does not need this.
+     */
+    @Prop()
+    keyBar: 'auto' | 'on' | 'off' = 'auto';
+
+    /**
+     * The sticky modifiers, armed by a tap and spent on the next key.
+     *
+     * State rather than a plain field because the bar has to show which of them
+     * is armed — a modifier you cannot see the state of is a modifier you press
+     * twice.
+     */
+    @State()
+    private ctrlArmed = false;
+
+    @State()
+    private altArmed = false;
 
     @Watch('nodeId')
     onNodeIdChange(newValue?: string, _oldValue?: string) {
@@ -502,6 +563,20 @@ export class PhirepassTerminal {
     }
 
     private handle_terminal_data(data: string) {
+        this.dispatch_input(this.apply_modifiers(data));
+    }
+
+    /**
+     * The one place input reaches the session, whatever produced it.
+     *
+     * The key bar goes through here too, which is what makes it work during the
+     * credential prompts: a tapped backspace at the password prompt is the same
+     * event as a typed one, and neither has to know which of the three modes
+     * the widget is in.
+     */
+    private dispatch_input(data: string) {
+        if (!data) return;
+
         switch (this.inputMode) {
             case InputMode.Username:
                 this.handle_username_input(data);
@@ -513,6 +588,67 @@ export class PhirepassTerminal {
                 this.send_ssh_data(data);
                 break;
         }
+    }
+
+    /**
+     * Spend whatever the key bar has armed on this keystroke.
+     *
+     * Only single characters are transformed. A paste arrives as one `onData`
+     * call carrying the whole clipboard, and control-ing the first character of
+     * it — or worse, escape-prefixing a hundred lines — is not what anybody
+     * armed the modifier for. An escape sequence the terminal generated itself
+     * (an arrow key on a hardware keyboard) is left alone for the same reason:
+     * it already encodes its own modifiers.
+     */
+    private apply_modifiers(data: string): string {
+        if (!this.ctrlArmed && !this.altArmed) return data;
+        if (data.length !== 1) return data;
+
+        let out = data;
+
+        if (this.ctrlArmed) {
+            const control = control_char(out);
+            // A key with no control form — a digit, say — passes through
+            // unchanged rather than being swallowed.
+            if (control !== null) out = control;
+        }
+
+        // Meta is transmitted as an ESC prefix, which is what every terminal
+        // has meant by Alt since long before either of us.
+        if (this.altArmed) out = `\u001b${out}`;
+
+        this.clear_modifiers();
+        return out;
+    }
+
+    private clear_modifiers() {
+        this.ctrlArmed = false;
+        this.altArmed = false;
+    }
+
+    /**
+     * A key from the bar.
+     *
+     * Focus is returned to the terminal afterwards: on a phone the soft
+     * keyboard is tied to the focused element, and a bar that dismissed it on
+     * every tap would be a bar you use once.
+     */
+    private press(data: string) {
+        this.dispatch_input(data);
+        this.clear_modifiers();
+        this.terminal?.focus();
+    }
+
+    /**
+     * An arrow, encoded with whatever is armed.
+     *
+     * xterm's modifier encoding is a bitfield offset by one: 1 is unmodified,
+     * +1 shift, +2 alt, +4 ctrl. Unmodified arrows keep the short form, because
+     * some remote programs only ever learned that one.
+     */
+    private arrow(final: 'A' | 'B' | 'C' | 'D'): string {
+        const modifier = 1 + (this.altArmed ? 2 : 0) + (this.ctrlArmed ? 4 : 0);
+        return modifier === 1 ? `\u001b[${final}` : `\u001b[1;${modifier}${final}`;
     }
 
     private handle_username_input(data: string) {
@@ -611,9 +747,71 @@ export class PhirepassTerminal {
         this.usernameBuffer = "";
     }
 
+    /**
+     * One key on the bar.
+     *
+     * The press swallows its own default so the button never takes focus:
+     * moving focus off the terminal is what closes the soft keyboard, and a
+     * modifier bar that closes the keyboard is a modifier bar for nothing.
+     *
+     * Both events are guarded because either can be the one that moves focus —
+     * a touch fires `pointerdown` and then a compatibility `mousedown`, and it
+     * is whichever of them runs first that has to be refused.
+     */
+    private key_button(
+        id: string,
+        label: string,
+        hint: string,
+        onPress: () => void,
+        armed?: boolean,
+    ) {
+        return (
+            <button
+                key={id}
+                type="button"
+                class={{ key: true, armed: !!armed }}
+                aria-label={hint}
+                aria-pressed={armed === undefined ? undefined : String(armed)}
+                onPointerDown={(event: Event) => event.preventDefault()}
+                onMouseDown={(event: Event) => event.preventDefault()}
+                onClick={onPress}
+            >
+                {label}
+            </button>
+        );
+    }
+
     render() {
         return (
-            <Host><div id="ccc" ref={el => (this.containerEl = el as HTMLDivElement)}></div></Host>
+            <Host class={{ 'keys-on': this.keyBar === 'on', 'keys-off': this.keyBar === 'off' }}>
+                <div id="ccc" ref={el => (this.containerEl = el as HTMLDivElement)}></div>
+
+                {/* Shown by CSS wherever the pointer is coarse — a phone has no
+                    Ctrl, no Esc, no arrows and no Tab, which between them are
+                    most of what a shell is driven with. */}
+                <div class="keys" role="toolbar" aria-label="Terminal keys">
+                    {this.key_button('ctrl', 'ctrl', 'Control', () => {
+                        this.ctrlArmed = !this.ctrlArmed;
+                        this.terminal?.focus();
+                    }, this.ctrlArmed)}
+
+                    {this.key_button('alt', 'alt', 'Alt', () => {
+                        this.altArmed = !this.altArmed;
+                        this.terminal?.focus();
+                    }, this.altArmed)}
+
+                    {KEY_BAR_KEYS.map(entry =>
+                        this.key_button(entry.id, entry.label, entry.hint, () => this.press(entry.data)),
+                    )}
+
+                    <span class="spacer"></span>
+
+                    {this.key_button('left', '←', 'Left arrow', () => this.press(this.arrow('D')))}
+                    {this.key_button('down', '↓', 'Down arrow', () => this.press(this.arrow('B')))}
+                    {this.key_button('up', '↑', 'Up arrow', () => this.press(this.arrow('A')))}
+                    {this.key_button('right', '→', 'Right arrow', () => this.press(this.arrow('C')))}
+                </div>
+            </Host>
         );
     }
 }
