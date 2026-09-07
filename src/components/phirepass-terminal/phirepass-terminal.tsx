@@ -36,6 +36,26 @@ function control_char(key: string): string | null {
     return null;
 }
 
+/**
+ * How many frames to keep re-trying a fit before leaving it to the observer.
+ *
+ * Generous, because what is being waited on is a font load and a layout pass,
+ * not a network round trip — and cheap, because each attempt is one measurement
+ * that stops the moment it succeeds.
+ */
+const FIT_MAX_ATTEMPTS = 60;
+
+/**
+ * How much of the container the session may leave unfilled and still count as
+ * fitted.
+ *
+ * There is always a remainder: rows are whole, so the last partial row's worth
+ * of pixels belongs to nobody. One cell is normal and invisible; half a panel is
+ * the bug this guards. Sized above any realistic cell height so a correctly
+ * fitted terminal is never retried, and far below the gap a stale fit leaves.
+ */
+const FIT_SLACK_PX = 48;
+
 /** The bar, left to right. `label` is what is drawn; `hint` is for a screen reader. */
 const KEY_BAR_KEYS = [
     { id: 'esc', label: 'esc', hint: 'Escape', data: '\u001b' },
@@ -68,6 +88,7 @@ export class PhirepassTerminal {
     private inputMode: InputMode = InputMode.Default;
     private resizeObserver!: ResizeObserver;
     private resizeDebounceHandle?: ReturnType<typeof setTimeout> | number;
+    private fitRetryHandle?: number;
 
     private session_id?: number;
     private usernameBuffer = "";
@@ -265,6 +286,11 @@ export class PhirepassTerminal {
             this.resizeDebounceHandle = undefined;
         }
 
+        if (this.fitRetryHandle !== undefined) {
+            cancelAnimationFrame(this.fitRetryHandle);
+            this.fitRetryHandle = undefined;
+        }
+
         if (this.resizeObserver) {
             this.resizeObserver.disconnect();
         }
@@ -280,16 +306,86 @@ export class PhirepassTerminal {
         return Boolean(this.connected && this.containerEl && (this.terminal as Terminal & { element?: HTMLElement }).element);
     }
 
-    private fit_terminal_safely() {
+    /**
+     * Size the session to its container, and **keep trying until it works**.
+     *
+     * The bug this replaces: a fit could be skipped — the renderer not ready
+     * yet, `connected` not yet set, `fit()` throwing on dimensions that do not
+     * exist for another frame — and nothing ever retried it. The only other
+     * thing that fits is the `ResizeObserver`, so a terminal opened into a
+     * container that never changes size again stayed at whatever number of rows
+     * it happened to have. On a panel the user does not resize, that is
+     * permanent: the session renders at a fraction of the height it was given
+     * and the dead space below it is not part of the terminal at all.
+     *
+     * Retrying on `requestAnimationFrame` rather than a timer because what is
+     * being waited for *is* a frame: xterm computes its cell metrics from a
+     * measured element, and that measurement is only meaningful once the
+     * browser has laid the container out and the font it will actually use has
+     * loaded. The attempt cap keeps a container that is genuinely zero-sized —
+     * a hidden tab, a collapsed panel — from spinning a frame loop forever;
+     * the observer will call this again when it gains a size.
+     */
+    private schedule_fit() {
+        if (this.fitRetryHandle !== undefined) {
+            cancelAnimationFrame(this.fitRetryHandle);
+            this.fitRetryHandle = undefined;
+        }
+
+        let attempts = 0;
+
+        const attempt = () => {
+            this.fitRetryHandle = undefined;
+
+            if (this.fit_terminal_safely()) {
+                return;
+            }
+
+            attempts += 1;
+            if (attempts >= FIT_MAX_ATTEMPTS) {
+                console.warn('Giving up fitting the terminal; waiting for a resize instead');
+                return;
+            }
+
+            this.fitRetryHandle = requestAnimationFrame(attempt);
+        };
+
+        attempt();
+    }
+
+    /**
+     * One attempt. `true` when the session is now sized to its container.
+     *
+     * A container with no height yet counts as a failure rather than a success,
+     * which is what makes the retry above worth having: `fit()` on a zero-height
+     * parent does not throw, it computes one row and returns happily.
+     */
+    private fit_terminal_safely(): boolean {
         if (!this.fitAddon || !this.is_terminal_open()) {
-            return;
+            return false;
+        }
+
+        const height = this.containerEl?.clientHeight ?? 0;
+        const width = this.containerEl?.clientWidth ?? 0;
+        if (height <= 0 || width <= 0) {
+            return false;
         }
 
         try {
             this.fitAddon.fit();
         } catch (err) {
             console.warn('Skipping terminal fit before renderer is ready:', err);
+            return false;
         }
+
+        // Fitted, but to the right thing? `proposeDimensions` can be answered
+        // from stale cell metrics — most often when a web font finishes loading
+        // after the first measurement — and the symptom is a session that fills
+        // half its panel. Compare what we got against what there was to fill.
+        const rows = this.terminal?.rows ?? 0;
+        const rendered = (this.terminal as Terminal & { element?: HTMLElement }).element?.clientHeight ?? 0;
+
+        return rows > 0 && rendered > 0 && height - rendered < FIT_SLACK_PX;
     }
 
     private try_connect() {
@@ -509,7 +605,7 @@ export class PhirepassTerminal {
     private handle_tunnel_opened(web: ProtocolMessageWebTunnelOpened) {
         this.session_id = web.sid;
         this.terminal.reset();
-        this.fit_terminal_safely();
+        this.schedule_fit();
         this.send_ssh_terminal_resize();
     }
 
@@ -536,13 +632,43 @@ export class PhirepassTerminal {
             this.terminal.open(container);
             console.log('Terminal opened in container');
             this.connected = true;
-            this.fit_terminal_safely();
+            // Scheduled, not attempted once: `open()` has only just handed the
+            // renderer its element, so the first measurement is routinely the
+            // one that is too early.
+            this.schedule_fit();
             this.terminal.focus();
             this.terminal.onData(this.handle_terminal_data.bind(this));
             this.channel.connect();
             this.setup_resize_observer();
+            this.refit_when_fonts_settle();
             console.log('Terminal connected and ready');
         }
+    }
+
+    /**
+     * Fit again once the web fonts have actually loaded.
+     *
+     * xterm measures one character to derive its cell size, and if that
+     * measurement happens while the browser is still falling back — "Berkeley
+     * Mono" and "Fira Code" are both remote — every row is sized from the wrong
+     * font. The container does not change size when the real font arrives, so
+     * the `ResizeObserver` never fires and nothing else would ever correct it.
+     *
+     * Guarded because `document.fonts` is absent in some embedding contexts, and
+     * a missing font API is not a reason to fail to open a shell.
+     */
+    private refit_when_fonts_settle() {
+        const fonts = (document as Document & { fonts?: FontFaceSet }).fonts;
+        if (!fonts?.ready) {
+            return;
+        }
+
+        void fonts.ready.then(() => {
+            if (this.connected) {
+                this.schedule_fit();
+                this.send_ssh_terminal_resize();
+            }
+        });
     }
 
     private setup_resize_observer() {
@@ -554,7 +680,7 @@ export class PhirepassTerminal {
             }
 
             this.resizeDebounceHandle = setTimeout(() => {
-                this.fit_terminal_safely();
+                this.schedule_fit();
                 this.send_ssh_terminal_resize();
             }, 100);
         });
