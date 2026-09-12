@@ -44,7 +44,7 @@
         "@stencil/core": "^4.45.0",
         "@stencil/vitest": "^1.15.1",
         "@types/node": "^26",
-        "vitest": "^4.1.11"
+        "vitest": "^5.0.0"
     },
     "license": "AGPL-3.0-or-later",
     "dependencies": {
