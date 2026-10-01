@@ -9,3 +9,5 @@
  */
 
 export type * from './components.d.ts';
+export type { ChannelFactory, ChannelLike } from './common/channel';
+export type * from './common/protocol';

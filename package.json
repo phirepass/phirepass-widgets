@@ -10,6 +10,7 @@
     "unpkg": "dist/phirepass-widgets/phirepass-widgets.esm.js",
     "exports": {
         ".": {
+            "types": "./dist/types/index.d.ts",
             "import": "./dist/phirepass-widgets/phirepass-widgets.esm.js",
             "require": "./dist/phirepass-widgets/phirepass-widgets.cjs.js"
         },

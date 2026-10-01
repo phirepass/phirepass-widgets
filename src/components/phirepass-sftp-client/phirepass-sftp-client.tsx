@@ -1,6 +1,7 @@
 import { Component, Host, Method, Prop, State, Watch, h } from '@stencil/core';
 import { Event, EventEmitter } from '@stencil/core';
 import init, { Channel as PhirepassChannel } from 'phirepass-channel';
+import type { ChannelFactory, ChannelLike } from '../../common/channel';
 
 import svg from './phirepass-sftp-client.logo.svg';
 import max from './phirepass-sftp-client.max.svg';
@@ -81,7 +82,7 @@ type SortKey = 'name' | 'size' | 'modified';
     shadow: true,
 })
 export class PhirepassSftpClient {
-    private channel!: PhirepassChannel;
+    private channel!: ChannelLike;
     private domReady = false;
     private runtimeReady = false;
     private connected = false;
@@ -157,6 +158,14 @@ export class PhirepassSftpClient {
 
     @Prop()
     serverId?: string;
+
+    /**
+     * Supplies the channel instead of a WebSocket to the server — for demos,
+     * screenshots and tests. A property only (a function cannot be an
+     * attribute); read once, when the widget connects. See `ChannelFactory`.
+     */
+    @Prop()
+    channelFactory?: ChannelFactory;
 
     @Watch('serverId')
     onServerIdChange(_newValue?: string, _oldValue?: string) {
@@ -348,7 +357,9 @@ export class PhirepassSftpClient {
     }
 
     async connectedCallback() {
-        await init();
+        if (!this.channelFactory) {
+            await init();
+        }
         // this.setup_terminal();
         this.open_comms();
         this.runtimeReady = true;
@@ -1040,10 +1051,13 @@ export class PhirepassSftpClient {
     }
 
     private open_comms() {
-        if (this.serverId) {
-            this.channel = new PhirepassChannel(`${this.create_web_socket_endpoint()}/api/web/ws`, this.nodeId!, this.serverId!);
+        const endpoint = `${this.create_web_socket_endpoint()}/api/web/ws`;
+        if (this.channelFactory) {
+            this.channel = this.channelFactory(endpoint, this.nodeId!, this.serverId || undefined);
+        } else if (this.serverId) {
+            this.channel = new PhirepassChannel(endpoint, this.nodeId!, this.serverId!);
         } else {
-            this.channel = new PhirepassChannel(`${this.create_web_socket_endpoint()}/api/web/ws`, this.nodeId!);
+            this.channel = new PhirepassChannel(endpoint, this.nodeId!);
         }
 
         this.channel.on_connection_open(() => {

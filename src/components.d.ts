@@ -6,7 +6,9 @@
  */
 import { HTMLStencilElement, JSXBase } from "@stencil/core/internal";
 import { ConnectionState } from "./common/protocol";
+import { ChannelFactory } from "./common/channel";
 export { ConnectionState } from "./common/protocol";
+export { ChannelFactory } from "./common/channel";
 export namespace Components {
     /**
      * Remote desktop over RDP.
@@ -94,6 +96,10 @@ export namespace Components {
          */
         "allowInsecure": boolean;
         /**
+          * Supplies the channel instead of a WebSocket to the server — for demos, screenshots and tests. A property only (a function cannot be an attribute); read once, when the widget connects. See `ChannelFactory`.
+         */
+        "channelFactory"?: ChannelFactory;
+        /**
           * @default 'Client'
          */
         "description": string;
@@ -129,6 +135,10 @@ export namespace Components {
           * @default false
          */
         "allowInsecure": boolean;
+        /**
+          * Supplies the channel instead of a WebSocket to the server — for demos, screenshots and tests. A property only (a function cannot be an attribute); read once, when the widget connects. See `ChannelFactory`.
+         */
+        "channelFactory"?: ChannelFactory;
         /**
           * @default 30_000
          */
@@ -306,6 +316,10 @@ declare namespace LocalJSX {
          */
         "allowInsecure"?: boolean;
         /**
+          * Supplies the channel instead of a WebSocket to the server — for demos, screenshots and tests. A property only (a function cannot be an attribute); read once, when the widget connects. See `ChannelFactory`.
+         */
+        "channelFactory"?: ChannelFactory;
+        /**
           * @default 'Client'
          */
         "description"?: string;
@@ -341,6 +355,10 @@ declare namespace LocalJSX {
           * @default false
          */
         "allowInsecure"?: boolean;
+        /**
+          * Supplies the channel instead of a WebSocket to the server — for demos, screenshots and tests. A property only (a function cannot be an attribute); read once, when the widget connects. See `ChannelFactory`.
+         */
+        "channelFactory"?: ChannelFactory;
         /**
           * @default 30_000
          */

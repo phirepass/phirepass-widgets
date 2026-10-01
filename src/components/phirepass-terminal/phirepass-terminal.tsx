@@ -8,6 +8,7 @@ import { WebglAddon } from '@xterm/addon-webgl';
 import { SerializeAddon } from '@xterm/addon-serialize';
 import { ImageAddon, IImageAddonOptions } from '@xterm/addon-image';
 import init, { Channel as PhirepassChannel } from 'phirepass-channel';
+import type { ChannelFactory, ChannelLike } from '../../common/channel';
 import { ConnectionState, InputMode, ProtocolMessage, ProtocolMessageError, ProtocolMessageType, ProtocolMessageWebAuthSuccess, ProtocolMessageWebError, ProtocolMessageWebTunnelClosed, ProtocolMessageWebTunnelData, ProtocolMessageWebTunnelOpened } from '../../common/protocol';
 
 /**
@@ -80,7 +81,7 @@ export class PhirepassTerminal {
     private serializeAddon?: SerializeAddon;
     private imageAddon?: ImageAddon;
 
-    private channel!: PhirepassChannel;
+    private channel!: ChannelLike;
     private containerEl?: HTMLDivElement;
     private domReady = false;
     private runtimeReady = false;
@@ -234,6 +235,14 @@ export class PhirepassTerminal {
     @Prop()
     serverId?: string;
 
+    /**
+     * Supplies the channel instead of a WebSocket to the server — for demos,
+     * screenshots and tests. A property only (a function cannot be an
+     * attribute); read once, when the widget connects. See `ChannelFactory`.
+     */
+    @Prop()
+    channelFactory?: ChannelFactory;
+
     @Watch('serverId')
     onServerIdChange(_newValue?: string, _oldValue?: string) {
         this.onNodeIdChange(this.nodeId, this.nodeId);
@@ -262,7 +271,9 @@ export class PhirepassTerminal {
     }
 
     async connectedCallback() {
-        await init();
+        if (!this.channelFactory) {
+            await init();
+        }
         this.setup_terminal();
         this.open_comms();
         this.runtimeReady = true;
@@ -442,10 +453,13 @@ export class PhirepassTerminal {
     }
 
     private open_comms() {
-        if (this.serverId) {
-            this.channel = new PhirepassChannel(`${this.create_web_socket_endpoint()}/api/web/ws`, this.nodeId!, this.serverId!);
+        const endpoint = `${this.create_web_socket_endpoint()}/api/web/ws`;
+        if (this.channelFactory) {
+            this.channel = this.channelFactory(endpoint, this.nodeId!, this.serverId || undefined);
+        } else if (this.serverId) {
+            this.channel = new PhirepassChannel(endpoint, this.nodeId!, this.serverId!);
         } else {
-            this.channel = new PhirepassChannel(`${this.create_web_socket_endpoint()}/api/web/ws`, this.nodeId!);
+            this.channel = new PhirepassChannel(endpoint, this.nodeId!);
         }
 
         this.channel.on_connection_open(() => {
