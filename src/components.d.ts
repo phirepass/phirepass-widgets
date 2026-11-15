@@ -5,20 +5,167 @@
  * It contains typing information for all components that exist in this project.
  */
 import { HTMLStencilElement, JSXBase } from "@stencil/core/internal";
-import { ConnectionState } from "./common/protocol";
-import { ChannelFactory } from "./common/channel";
-export { ConnectionState } from "./common/protocol";
-export { ChannelFactory } from "./common/channel";
+import { ChannelFactory, DownloadChannelFactory, DownloadChannelLike } from "./common/channel";
+import { ConnectionState, ProtocolMessage } from "./common/protocol";
+import { PositionStore, RemotePlaybackLike } from "./components/phirepass-media-player/player";
+export { ChannelFactory, DownloadChannelFactory, DownloadChannelLike } from "./common/channel";
+export { ConnectionState, ProtocolMessage } from "./common/protocol";
+export { PositionStore, RemotePlaybackLike } from "./components/phirepass-media-player/player";
 export namespace Components {
     /**
-     * Remote desktop over RDP.
-     * Unlike the terminal and SFTP widgets this one does not pipe protocol bytes
-     * through the phirepass channel. The channel is used only to authorise the
-     * session; the actual RDP stream runs on a second WebSocket opened by IronRDP's
-     * own client, because that client speaks RDCleanPath and can set neither
-     * headers nor a subprotocol on the socket it opens. See `RDP.md` in
-     * `phirepass-rs` for why the session is split across two sockets.
+     * Remote Fetch: paste a link or a magnet, or drop a `.torrent`, and the node
+     * downloads it into its own download folder.
+     * Two forms, one component. **Embedded** in the SFTP browser (`compact`), it
+     * shares the host's channel, which forwards it the `Download*` frames through
+     * `receive()`, and saves into the folder on screen when the node can map it.
+     * **Standalone**, it builds its own channel, signs in with `token`, and saves
+     * into the download folder or a sub-folder of it. Either way it never asks for
+     * a login: the node writes its own files.
+     * The widget only sends events and shows progress. Downloads run on the node
+     * and carry on after the tab closes.
      */
+    interface PhirepassDownloader {
+        /**
+          * @default false
+         */
+        "allowInsecure": boolean;
+        /**
+          * The folder on screen in the host. Downloads land here when it lies inside the download folder.
+         */
+        "browsingPath"?: string;
+        /**
+          * The SFTP/SSH service the host is browsing, so the node can map `browsingPath`.
+         */
+        "browsingService"?: string;
+        /**
+          * Whether the viewer may configure this node, which only changes advice text (B9).
+          * @default false
+         */
+        "canConfigure": boolean;
+        /**
+          * A channel to share instead of opening one: the SFTP client passes its own. The host must forward `Download*` frames (and `Error`s whose `msg_id` is at or above `DOWNLOADER_MSG_ID_BASE`) to `receive()`, and set `connected` once the channel is authenticated.
+         */
+        "channel"?: DownloadChannelLike;
+        /**
+          * Builds the channel in place of a WebSocket, for demos and tests (see `ChannelFactory`).
+         */
+        "channelFactory"?: DownloadChannelFactory;
+        /**
+          * The drawer layout used inside the SFTP browser.
+          * @default false
+         */
+        "compact": boolean;
+        /**
+          * With an injected `channel`: whether it is authenticated and usable.
+          * @default false
+         */
+        "connected": boolean;
+        /**
+          * Deletes a download (an unfinished one always loses its part file).
+         */
+        "deleteDownload": (downloadId: string, deleteFile?: boolean) => Promise<void>;
+        /**
+          * @default 30_000
+         */
+        "heartbeatInterval": number;
+        /**
+          * Open the built-in player on Play, unless a `phirepassPlay` listener calls `preventDefault()`.
+          * @default true
+         */
+        "inlinePlayer": boolean;
+        /**
+          * The running download whose part file this is, so the SFTP client can offer K3 instead of a plain delete.
+         */
+        "jobForPath": (path: string) => Promise<{ download_id: string; name: string; } | null>;
+        "nodeId": string;
+        /**
+          * What to call the node in sentences; the id is a uuid nobody reads.
+         */
+        "nodeLabel"?: string;
+        /**
+          * Opens the Fetch dialog (and the drawer behind it). `path` updates the folder on screen.
+         */
+        "openFetch": (path?: string) => Promise<void>;
+        /**
+          * Hands this widget a frame from a shared channel: `Download*` frames, and `Error`s answering one of its `msg_id`s. Anything else is ignored.
+         */
+        "receive": (msg: ProtocolMessage | { data: { web: unknown; }; }) => Promise<void>;
+        /**
+          * @default 'phirepass.com'
+         */
+        "serverHost": string;
+        "serverId"?: string;
+        /**
+          * @default 443
+         */
+        "serverPort": number;
+        /**
+          * C: download the contents of a `.torrent` already on the node, into the folder it sits in.
+         */
+        "startTorrentPath": (path: string, inOrder?: boolean) => Promise<boolean>;
+        /**
+          * Base URL for `/api/web/stream/…`. Defaults to the server the channel talks to.
+         */
+        "streamBase"?: string;
+        /**
+          * Opens or closes the drawer (embedded).
+         */
+        "toggleDrawer": (open?: boolean) => Promise<void>;
+        /**
+          * Session token, for the standalone form. Not needed when `channel` is given.
+         */
+        "token"?: string;
+        /**
+          * The path of a `.torrent` on the node relative to the download folder, or null when it lies outside it (then C's menu item is not offered).
+         */
+        "torrentPathFor": (path: string) => Promise<string | null>;
+    }
+    /**
+     * Plays a file from the node with the browser's own `<video>` or `<audio>`.
+     * It knows nothing of channels or WASM: `src` is a stream URL the server turns
+     * into stream events towards the agent, and the browser's range requests do
+     * the rest. A download that is still arriving plays as far as `ready` bytes;
+     * past that the element waits, and so does the player, saying why.
+     */
+    interface PhirepassMediaPlayer {
+        /**
+          * Shown while casting, when the host knows the device's name.
+         */
+        "castDevice"?: string;
+        /**
+          * Closes the player, saving where it stopped. The download is not affected.
+         */
+        "close": () => Promise<void>;
+        /**
+          * Overrides the mime the extension implies.
+         */
+        "mime"?: string;
+        "name": string;
+        /**
+          * Key for the stored position: `dl:<download_id>:<file>` or `node:<node_id>:<path>`.
+         */
+        "positionKey"?: string;
+        /**
+          * “Continue watching”. Without one, positions stay in this browser.
+         */
+        "positionStore"?: PositionStore;
+        /**
+          * Bytes ready from the start of the file, while it is still downloading.
+         */
+        "ready"?: number;
+        /**
+          * Stands in for `video.remote`, for demos and tests (like `channelFactory`).
+         */
+        "remotePlayback"?: RemotePlaybackLike;
+        /**
+          * The stream URL: `/api/web/stream/{node}/{download}/{file}` or a listing token URL.
+         */
+        "src": string;
+        /**
+          * The status line above the picture, from the job: “Downloading · 23.4%”, “On the node”.
+         */
+        "status"?: string;
+    }
     interface PhirepassRdp {
         /**
           * @default false
@@ -29,6 +176,10 @@ export namespace Components {
           * @default true
          */
         "captureKeyboard": boolean;
+        /**
+          * Supplies the channel instead of a WebSocket to the server — for demos, screenshots and tests, as on the terminal and SFTP client. A property only; read once, when the widget connects.
+         */
+        "channelFactory"?: (endpoint: string, nodeId: string, serverId?: string) => RdpChannelLike;
         /**
           * Share the clipboard with the remote host in both directions.  On is the client's own default and needs nothing from us, so this exists to turn it **off**: a deployment that treats copy-out as exfiltration can take the clipboard away without giving up the session. Clipboard access additionally needs a secure context — over plain HTTP the browser refuses it whatever this says, and the client's warning is logged.
           * @default true
@@ -166,6 +317,14 @@ export namespace Components {
         "token": string;
     }
 }
+export interface PhirepassDownloaderCustomEvent<T> extends CustomEvent<T> {
+    detail: T;
+    target: HTMLPhirepassDownloaderElement;
+}
+export interface PhirepassMediaPlayerCustomEvent<T> extends CustomEvent<T> {
+    detail: T;
+    target: HTMLPhirepassMediaPlayerElement;
+}
 export interface PhirepassRdpCustomEvent<T> extends CustomEvent<T> {
     detail: T;
     target: HTMLPhirepassRdpElement;
@@ -179,18 +338,67 @@ export interface PhirepassTerminalCustomEvent<T> extends CustomEvent<T> {
     target: HTMLPhirepassTerminalElement;
 }
 declare global {
+    interface HTMLPhirepassDownloaderElementEventMap {
+        "phirepassFetchCompleted": { download_id: string; dest_root: string; sub_dir: string | null; name: string };
+        "phirepassPlay": { src: string; name: string; downloadId: string };
+        "phirepassActiveCount": { n: number };
+        "phirepassShowInFolder": { path: string; name: string };
+        "phirepassOpenNodeSettings": { nodeId: string };
+        "phirepassSignIn": void;
+    }
+    /**
+     * Remote Fetch: paste a link or a magnet, or drop a `.torrent`, and the node
+     * downloads it into its own download folder.
+     * Two forms, one component. **Embedded** in the SFTP browser (`compact`), it
+     * shares the host's channel, which forwards it the `Download*` frames through
+     * `receive()`, and saves into the folder on screen when the node can map it.
+     * **Standalone**, it builds its own channel, signs in with `token`, and saves
+     * into the download folder or a sub-folder of it. Either way it never asks for
+     * a login: the node writes its own files.
+     * The widget only sends events and shows progress. Downloads run on the node
+     * and carry on after the tab closes.
+     */
+    interface HTMLPhirepassDownloaderElement extends Components.PhirepassDownloader, HTMLStencilElement {
+        addEventListener<K extends keyof HTMLPhirepassDownloaderElementEventMap>(type: K, listener: (this: HTMLPhirepassDownloaderElement, ev: PhirepassDownloaderCustomEvent<HTMLPhirepassDownloaderElementEventMap[K]>) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
+        removeEventListener<K extends keyof HTMLPhirepassDownloaderElementEventMap>(type: K, listener: (this: HTMLPhirepassDownloaderElement, ev: PhirepassDownloaderCustomEvent<HTMLPhirepassDownloaderElementEventMap[K]>) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
+    }
+    var HTMLPhirepassDownloaderElement: {
+        prototype: HTMLPhirepassDownloaderElement;
+        new (): HTMLPhirepassDownloaderElement;
+    };
+    interface HTMLPhirepassMediaPlayerElementEventMap {
+        "phirepassPlayerClose": void;
+    }
+    /**
+     * Plays a file from the node with the browser's own `<video>` or `<audio>`.
+     * It knows nothing of channels or WASM: `src` is a stream URL the server turns
+     * into stream events towards the agent, and the browser's range requests do
+     * the rest. A download that is still arriving plays as far as `ready` bytes;
+     * past that the element waits, and so does the player, saying why.
+     */
+    interface HTMLPhirepassMediaPlayerElement extends Components.PhirepassMediaPlayer, HTMLStencilElement {
+        addEventListener<K extends keyof HTMLPhirepassMediaPlayerElementEventMap>(type: K, listener: (this: HTMLPhirepassMediaPlayerElement, ev: PhirepassMediaPlayerCustomEvent<HTMLPhirepassMediaPlayerElementEventMap[K]>) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
+        addEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | AddEventListenerOptions): void;
+        removeEventListener<K extends keyof HTMLPhirepassMediaPlayerElementEventMap>(type: K, listener: (this: HTMLPhirepassMediaPlayerElement, ev: PhirepassMediaPlayerCustomEvent<HTMLPhirepassMediaPlayerElementEventMap[K]>) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener<K extends keyof HTMLElementEventMap>(type: K, listener: (this: HTMLElement, ev: HTMLElementEventMap[K]) => any, options?: boolean | EventListenerOptions): void;
+        removeEventListener(type: string, listener: EventListenerOrEventListenerObject, options?: boolean | EventListenerOptions): void;
+    }
+    var HTMLPhirepassMediaPlayerElement: {
+        prototype: HTMLPhirepassMediaPlayerElement;
+        new (): HTMLPhirepassMediaPlayerElement;
+    };
     interface HTMLPhirepassRdpElementEventMap {
         "connectionStateChanged": [ConnectionState, unknown?];
     }
-    /**
-     * Remote desktop over RDP.
-     * Unlike the terminal and SFTP widgets this one does not pipe protocol bytes
-     * through the phirepass channel. The channel is used only to authorise the
-     * session; the actual RDP stream runs on a second WebSocket opened by IronRDP's
-     * own client, because that client speaks RDCleanPath and can set neither
-     * headers nor a subprotocol on the socket it opens. See `RDP.md` in
-     * `phirepass-rs` for why the session is split across two sockets.
-     */
     interface HTMLPhirepassRdpElement extends Components.PhirepassRdp, HTMLStencilElement {
         addEventListener<K extends keyof HTMLPhirepassRdpElementEventMap>(type: K, listener: (this: HTMLPhirepassRdpElement, ev: PhirepassRdpCustomEvent<HTMLPhirepassRdpElementEventMap[K]>) => any, options?: boolean | AddEventListenerOptions): void;
         addEventListener<K extends keyof DocumentEventMap>(type: K, listener: (this: Document, ev: DocumentEventMap[K]) => any, options?: boolean | AddEventListenerOptions): void;
@@ -241,6 +449,8 @@ declare global {
         new (): HTMLPhirepassTerminalElement;
     };
     interface HTMLElementTagNameMap {
+        "phirepass-downloader": HTMLPhirepassDownloaderElement;
+        "phirepass-media-player": HTMLPhirepassMediaPlayerElement;
         "phirepass-rdp": HTMLPhirepassRdpElement;
         "phirepass-sftp-client": HTMLPhirepassSftpClientElement;
         "phirepass-terminal": HTMLPhirepassTerminalElement;
@@ -250,14 +460,152 @@ declare namespace LocalJSX {
     type OneOf<K extends string, PropT, AttrT = PropT> = { [P in K]: PropT } & { [P in `attr:${K}`]?: never } | { [P in `attr:${K}`]: AttrT } & { [P in K]?: never };
 
     /**
-     * Remote desktop over RDP.
-     * Unlike the terminal and SFTP widgets this one does not pipe protocol bytes
-     * through the phirepass channel. The channel is used only to authorise the
-     * session; the actual RDP stream runs on a second WebSocket opened by IronRDP's
-     * own client, because that client speaks RDCleanPath and can set neither
-     * headers nor a subprotocol on the socket it opens. See `RDP.md` in
-     * `phirepass-rs` for why the session is split across two sockets.
+     * Remote Fetch: paste a link or a magnet, or drop a `.torrent`, and the node
+     * downloads it into its own download folder.
+     * Two forms, one component. **Embedded** in the SFTP browser (`compact`), it
+     * shares the host's channel, which forwards it the `Download*` frames through
+     * `receive()`, and saves into the folder on screen when the node can map it.
+     * **Standalone**, it builds its own channel, signs in with `token`, and saves
+     * into the download folder or a sub-folder of it. Either way it never asks for
+     * a login: the node writes its own files.
+     * The widget only sends events and shows progress. Downloads run on the node
+     * and carry on after the tab closes.
      */
+    interface PhirepassDownloader {
+        /**
+          * @default false
+         */
+        "allowInsecure"?: boolean;
+        /**
+          * The folder on screen in the host. Downloads land here when it lies inside the download folder.
+         */
+        "browsingPath"?: string;
+        /**
+          * The SFTP/SSH service the host is browsing, so the node can map `browsingPath`.
+         */
+        "browsingService"?: string;
+        /**
+          * Whether the viewer may configure this node, which only changes advice text (B9).
+          * @default false
+         */
+        "canConfigure"?: boolean;
+        /**
+          * A channel to share instead of opening one: the SFTP client passes its own. The host must forward `Download*` frames (and `Error`s whose `msg_id` is at or above `DOWNLOADER_MSG_ID_BASE`) to `receive()`, and set `connected` once the channel is authenticated.
+         */
+        "channel"?: DownloadChannelLike;
+        /**
+          * Builds the channel in place of a WebSocket, for demos and tests (see `ChannelFactory`).
+         */
+        "channelFactory"?: DownloadChannelFactory;
+        /**
+          * The drawer layout used inside the SFTP browser.
+          * @default false
+         */
+        "compact"?: boolean;
+        /**
+          * With an injected `channel`: whether it is authenticated and usable.
+          * @default false
+         */
+        "connected"?: boolean;
+        /**
+          * @default 30_000
+         */
+        "heartbeatInterval"?: number;
+        /**
+          * Open the built-in player on Play, unless a `phirepassPlay` listener calls `preventDefault()`.
+          * @default true
+         */
+        "inlinePlayer"?: boolean;
+        "nodeId": string;
+        /**
+          * What to call the node in sentences; the id is a uuid nobody reads.
+         */
+        "nodeLabel"?: string;
+        /**
+          * How many downloads are running, for a badge.
+         */
+        "onPhirepassActiveCount"?: (event: PhirepassDownloaderCustomEvent<{ n: number }>) => void;
+        /**
+          * A finished download, once per job. The SFTP client refreshes when it lands in the open folder.
+         */
+        "onPhirepassFetchCompleted"?: (event: PhirepassDownloaderCustomEvent<{ download_id: string; dest_root: string; sub_dir: string | null; name: string }>) => void;
+        /**
+          * “Open node settings” (B9, no folder).
+         */
+        "onPhirepassOpenNodeSettings"?: (event: PhirepassDownloaderCustomEvent<{ nodeId: string }>) => void;
+        /**
+          * Play was pressed. Cancelable: prevent it to open your own player instead.
+         */
+        "onPhirepassPlay"?: (event: PhirepassDownloaderCustomEvent<{ src: string; name: string; downloadId: string }>) => void;
+        /**
+          * “Show in folder” on a finished row.
+         */
+        "onPhirepassShowInFolder"?: (event: PhirepassDownloaderCustomEvent<{ path: string; name: string }>) => void;
+        /**
+          * “Sign in” (X3).
+         */
+        "onPhirepassSignIn"?: (event: PhirepassDownloaderCustomEvent<void>) => void;
+        /**
+          * @default 'phirepass.com'
+         */
+        "serverHost"?: string;
+        "serverId"?: string;
+        /**
+          * @default 443
+         */
+        "serverPort"?: number;
+        /**
+          * Base URL for `/api/web/stream/…`. Defaults to the server the channel talks to.
+         */
+        "streamBase"?: string;
+        /**
+          * Session token, for the standalone form. Not needed when `channel` is given.
+         */
+        "token"?: string;
+    }
+    /**
+     * Plays a file from the node with the browser's own `<video>` or `<audio>`.
+     * It knows nothing of channels or WASM: `src` is a stream URL the server turns
+     * into stream events towards the agent, and the browser's range requests do
+     * the rest. A download that is still arriving plays as far as `ready` bytes;
+     * past that the element waits, and so does the player, saying why.
+     */
+    interface PhirepassMediaPlayer {
+        /**
+          * Shown while casting, when the host knows the device's name.
+         */
+        "castDevice"?: string;
+        /**
+          * Overrides the mime the extension implies.
+         */
+        "mime"?: string;
+        "name": string;
+        "onPhirepassPlayerClose"?: (event: PhirepassMediaPlayerCustomEvent<void>) => void;
+        /**
+          * Key for the stored position: `dl:<download_id>:<file>` or `node:<node_id>:<path>`.
+         */
+        "positionKey"?: string;
+        /**
+          * “Continue watching”. Without one, positions stay in this browser.
+         */
+        "positionStore"?: PositionStore;
+        /**
+          * Bytes ready from the start of the file, while it is still downloading.
+         */
+        "ready"?: number;
+        /**
+          * Stands in for `video.remote`, for demos and tests (like `channelFactory`).
+         */
+        "remotePlayback"?: RemotePlaybackLike;
+        /**
+          * The stream URL: `/api/web/stream/{node}/{download}/{file}` or a listing token URL.
+         */
+        "src": string;
+        /**
+          * The status line above the picture, from the job: “Downloading · 23.4%”, “On the node”.
+         */
+        "status"?: string;
+    }
     interface PhirepassRdp {
         /**
           * @default false
@@ -268,6 +616,10 @@ declare namespace LocalJSX {
           * @default true
          */
         "captureKeyboard"?: boolean;
+        /**
+          * Supplies the channel instead of a WebSocket to the server — for demos, screenshots and tests, as on the terminal and SFTP client. A property only; read once, when the widget connects.
+         */
+        "channelFactory"?: (endpoint: string, nodeId: string, serverId?: string) => RdpChannelLike;
         /**
           * Share the clipboard with the remote host in both directions.  On is the client's own default and needs nothing from us, so this exists to turn it **off**: a deployment that treats copy-out as exfiltration can take the clipboard away without giving up the session. Clipboard access additionally needs a secure context — over plain HTTP the browser refuses it whatever this says, and the client's warning is logged.
           * @default true
@@ -387,6 +739,32 @@ declare namespace LocalJSX {
         "token": string;
     }
 
+    interface PhirepassDownloaderAttributes {
+        "nodeId": string;
+        "nodeLabel": string;
+        "token": string;
+        "connected": boolean;
+        "browsingService": string;
+        "browsingPath": string;
+        "compact": boolean;
+        "streamBase": string;
+        "canConfigure": boolean;
+        "inlinePlayer": boolean;
+        "serverHost": string;
+        "serverPort": number;
+        "serverId": string;
+        "allowInsecure": boolean;
+        "heartbeatInterval": number;
+    }
+    interface PhirepassMediaPlayerAttributes {
+        "src": string;
+        "name": string;
+        "mime": string;
+        "status": string;
+        "ready": number;
+        "positionKey": string;
+        "castDevice": string;
+    }
     interface PhirepassRdpAttributes {
         "serverHost": string;
         "serverPort": number;
@@ -430,6 +808,8 @@ declare namespace LocalJSX {
     }
 
     interface IntrinsicElements {
+        "phirepass-downloader": Omit<PhirepassDownloader, keyof PhirepassDownloaderAttributes> & { [K in keyof PhirepassDownloader & keyof PhirepassDownloaderAttributes]?: PhirepassDownloader[K] } & { [K in keyof PhirepassDownloader & keyof PhirepassDownloaderAttributes as `attr:${K}`]?: PhirepassDownloaderAttributes[K] } & { [K in keyof PhirepassDownloader & keyof PhirepassDownloaderAttributes as `prop:${K}`]?: PhirepassDownloader[K] } & OneOf<"nodeId", PhirepassDownloader["nodeId"], PhirepassDownloaderAttributes["nodeId"]>;
+        "phirepass-media-player": Omit<PhirepassMediaPlayer, keyof PhirepassMediaPlayerAttributes> & { [K in keyof PhirepassMediaPlayer & keyof PhirepassMediaPlayerAttributes]?: PhirepassMediaPlayer[K] } & { [K in keyof PhirepassMediaPlayer & keyof PhirepassMediaPlayerAttributes as `attr:${K}`]?: PhirepassMediaPlayerAttributes[K] } & { [K in keyof PhirepassMediaPlayer & keyof PhirepassMediaPlayerAttributes as `prop:${K}`]?: PhirepassMediaPlayer[K] } & OneOf<"src", PhirepassMediaPlayer["src"], PhirepassMediaPlayerAttributes["src"]> & OneOf<"name", PhirepassMediaPlayer["name"], PhirepassMediaPlayerAttributes["name"]>;
         "phirepass-rdp": Omit<PhirepassRdp, keyof PhirepassRdpAttributes> & { [K in keyof PhirepassRdp & keyof PhirepassRdpAttributes]?: PhirepassRdp[K] } & { [K in keyof PhirepassRdp & keyof PhirepassRdpAttributes as `attr:${K}`]?: PhirepassRdpAttributes[K] } & { [K in keyof PhirepassRdp & keyof PhirepassRdpAttributes as `prop:${K}`]?: PhirepassRdp[K] } & OneOf<"nodeId", PhirepassRdp["nodeId"], PhirepassRdpAttributes["nodeId"]> & OneOf<"serviceId", PhirepassRdp["serviceId"], PhirepassRdpAttributes["serviceId"]> & OneOf<"token", PhirepassRdp["token"], PhirepassRdpAttributes["token"]>;
         "phirepass-sftp-client": Omit<PhirepassSftpClient, keyof PhirepassSftpClientAttributes> & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes]?: PhirepassSftpClient[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `attr:${K}`]?: PhirepassSftpClientAttributes[K] } & { [K in keyof PhirepassSftpClient & keyof PhirepassSftpClientAttributes as `prop:${K}`]?: PhirepassSftpClient[K] } & OneOf<"nodeId", PhirepassSftpClient["nodeId"], PhirepassSftpClientAttributes["nodeId"]> & OneOf<"serviceId", PhirepassSftpClient["serviceId"], PhirepassSftpClientAttributes["serviceId"]> & OneOf<"token", PhirepassSftpClient["token"], PhirepassSftpClientAttributes["token"]>;
         "phirepass-terminal": Omit<PhirepassTerminal, keyof PhirepassTerminalAttributes> & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes]?: PhirepassTerminal[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `attr:${K}`]?: PhirepassTerminalAttributes[K] } & { [K in keyof PhirepassTerminal & keyof PhirepassTerminalAttributes as `prop:${K}`]?: PhirepassTerminal[K] } & OneOf<"nodeId", PhirepassTerminal["nodeId"], PhirepassTerminalAttributes["nodeId"]> & OneOf<"serviceId", PhirepassTerminal["serviceId"], PhirepassTerminalAttributes["serviceId"]> & OneOf<"token", PhirepassTerminal["token"], PhirepassTerminalAttributes["token"]>;
@@ -440,14 +820,26 @@ declare module "@stencil/core" {
     export namespace JSX {
         interface IntrinsicElements {
             /**
-             * Remote desktop over RDP.
-             * Unlike the terminal and SFTP widgets this one does not pipe protocol bytes
-             * through the phirepass channel. The channel is used only to authorise the
-             * session; the actual RDP stream runs on a second WebSocket opened by IronRDP's
-             * own client, because that client speaks RDCleanPath and can set neither
-             * headers nor a subprotocol on the socket it opens. See `RDP.md` in
-             * `phirepass-rs` for why the session is split across two sockets.
+             * Remote Fetch: paste a link or a magnet, or drop a `.torrent`, and the node
+             * downloads it into its own download folder.
+             * Two forms, one component. **Embedded** in the SFTP browser (`compact`), it
+             * shares the host's channel, which forwards it the `Download*` frames through
+             * `receive()`, and saves into the folder on screen when the node can map it.
+             * **Standalone**, it builds its own channel, signs in with `token`, and saves
+             * into the download folder or a sub-folder of it. Either way it never asks for
+             * a login: the node writes its own files.
+             * The widget only sends events and shows progress. Downloads run on the node
+             * and carry on after the tab closes.
              */
+            "phirepass-downloader": LocalJSX.IntrinsicElements["phirepass-downloader"] & JSXBase.HTMLAttributes<HTMLPhirepassDownloaderElement>;
+            /**
+             * Plays a file from the node with the browser's own `<video>` or `<audio>`.
+             * It knows nothing of channels or WASM: `src` is a stream URL the server turns
+             * into stream events towards the agent, and the browser's range requests do
+             * the rest. A download that is still arriving plays as far as `ready` bytes;
+             * past that the element waits, and so does the player, saying why.
+             */
+            "phirepass-media-player": LocalJSX.IntrinsicElements["phirepass-media-player"] & JSXBase.HTMLAttributes<HTMLPhirepassMediaPlayerElement>;
             "phirepass-rdp": LocalJSX.IntrinsicElements["phirepass-rdp"] & JSXBase.HTMLAttributes<HTMLPhirepassRdpElement>;
             "phirepass-sftp-client": LocalJSX.IntrinsicElements["phirepass-sftp-client"] & JSXBase.HTMLAttributes<HTMLPhirepassSftpClientElement>;
             "phirepass-terminal": LocalJSX.IntrinsicElements["phirepass-terminal"] & JSXBase.HTMLAttributes<HTMLPhirepassTerminalElement>;

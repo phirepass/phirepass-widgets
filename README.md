@@ -1,5 +1,38 @@
 [![Built With Stencil](https://img.shields.io/badge/-Built%20With%20Stencil-16161d.svg?logo=data%3Aimage%2Fsvg%2Bxml%3Bbase64%2CPD94bWwgdmVyc2lvbj0iMS4wIiBlbmNvZGluZz0idXRmLTgiPz4KPCEtLSBHZW5lcmF0b3I6IEFkb2JlIElsbHVzdHJhdG9yIDE5LjIuMSwgU1ZHIEV4cG9ydCBQbHVnLUluIC4gU1ZHIFZlcnNpb246IDYuMDAgQnVpbGQgMCkgIC0tPgo8c3ZnIHZlcnNpb249IjEuMSIgaWQ9IkxheWVyXzEiIHhtbG5zPSJodHRwOi8vd3d3LnczLm9yZy8yMDAwL3N2ZyIgeG1sbnM6eGxpbms9Imh0dHA6Ly93d3cudzMub3JnLzE5OTkveGxpbmsiIHg9IjBweCIgeT0iMHB4IgoJIHZpZXdCb3g9IjAgMCA1MTIgNTEyIiBzdHlsZT0iZW5hYmxlLWJhY2tncm91bmQ6bmV3IDAgMCA1MTIgNTEyOyIgeG1sOnNwYWNlPSJwcmVzZXJ2ZSI%2BCjxzdHlsZSB0eXBlPSJ0ZXh0L2NzcyI%2BCgkuc3Qwe2ZpbGw6I0ZGRkZGRjt9Cjwvc3R5bGU%2BCjxwYXRoIGNsYXNzPSJzdDAiIGQ9Ik00MjQuNywzNzMuOWMwLDM3LjYtNTUuMSw2OC42LTkyLjcsNjguNkgxODAuNGMtMzcuOSwwLTkyLjctMzAuNy05Mi43LTY4LjZ2LTMuNmgzMzYuOVYzNzMuOXoiLz4KPHBhdGggY2xhc3M9InN0MCIgZD0iTTQyNC43LDI5Mi4xSDE4MC40Yy0zNy42LDAtOTIuNy0zMS05Mi43LTY4LjZ2LTMuNkgzMzJjMzcuNiwwLDkyLjcsMzEsOTIuNyw2OC42VjI5Mi4xeiIvPgo8cGF0aCBjbGFzcz0ic3QwIiBkPSJNNDI0LjcsMTQxLjdIODcuN3YtMy42YzAtMzcuNiw1NC44LTY4LjYsOTIuNy02OC42SDMzMmMzNy45LDAsOTIuNywzMC43LDkyLjcsNjguNlYxNDEuN3oiLz4KPC9zdmc%2BCg%3D%3D&colorA=16161d&style=flat-square)](https://stenciljs.com)
 
+# phirepass-widgets
+
+Framework-agnostic web components for PhirePass, built with Stencil:
+
+| Element | What it is |
+|---|---|
+| `<phirepass-terminal>` | SSH terminal (xterm.js) |
+| `<phirepass-sftp-client>` | SFTP browser; hosts a compact `<phirepass-downloader>` and a Fetch button when the channel supports Remote Fetch |
+| `<phirepass-rdp>` | RDP client |
+| `<phirepass-downloader>` | Remote Fetch: the node downloads links, magnets and `.torrent` files into its own folder. `compact` for the drawer inside the SFTP browser, standalone otherwise |
+| `<phirepass-media-player>` | Plays a file from the node with the browser's own `<video>`/`<audio>` (resume position, cast) |
+
+Every component takes a `channelFactory` (or the downloader an injected `channel`), which is how the stories and tests run without a server. The downloader hides itself (and the SFTP browser hides Fetch) until `phirepass-channel` exposes the `send_download_*` methods.
+
+## Development
+
+Node is pinned in `.nvmrc` (`nvm use`).
+
+```bash
+npm start                 # stencil dev server
+npm run storybook         # stencil build, then Storybook on :6006
+npm test                  # spec tests (vitest, Stencil environment)
+npm run test:storybook    # every story's play function in headless Chromium
+npm run test:all          # both
+npm run build             # production build
+```
+
+`npm run test:storybook` needs Chromium once: `npx playwright install chromium`.
+
+Stories live in `stories/`: one file per existing widget and one per Remote Fetch screen group (`stories/remote-fetch/1-sftp` … `9-notices`). Each screen is its own story, and its `play` function is its test. The mock channel (`src/testing/mock-channel.ts`) and fixtures (`src/testing/fixtures.ts`) are shared by stories and specs.
+
+---
+
 # Stencil Component Starter
 
 > This is a starter project for building a standalone Web Components using Stencil.
