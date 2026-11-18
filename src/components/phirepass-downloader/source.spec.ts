@@ -97,3 +97,12 @@ describe('buildSourceAuth', () => {
         expect(buildSourceAuth({ ...EMPTY_AUTH, mode: 'header', headerName: name }).error).toBe(`${name} cannot be set here.`);
     });
 });
+
+describe('buildSourceAuth refuses what the node would refuse', () => {
+    it('a line break in any field, and a colon in a username', () => {
+        expect(buildSourceAuth({ ...EMPTY_AUTH, mode: 'bearer', token: 'a\r\nX-Evil: 1' }).error).toBe('A login cannot contain line breaks.');
+        expect(buildSourceAuth({ ...EMPTY_AUTH, mode: 'header', headerName: 'X-Key', headerValue: 'v\n' }).error).toBe('A login cannot contain line breaks.');
+        expect(buildSourceAuth({ ...EMPTY_AUTH, mode: 'basic', username: 'a:b' }).error).toBe('A username cannot contain a colon.');
+        expect(buildSourceAuth({ ...EMPTY_AUTH, mode: 'basic', username: 'ana', password: 'p' }).auth).toEqual({ Basic: { username: 'ana', password: 'p' } });
+    });
+});

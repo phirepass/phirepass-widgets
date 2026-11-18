@@ -6,6 +6,10 @@
  * enums by name, data-carrying enums externally tagged (`{ Http: { … } }`).
  * Unit enums that may grow end in `Unknown`, as on the Rust side, so a newer
  * server never breaks an older widget.
+ *
+ * A Rust `None` reaches JS as `undefined` (the field is absent), not `null`,
+ * even where a type below says `| null`. Read optional fields with `??` or a
+ * truthiness check, never `=== null`. Checked against the real channel build.
  */
 
 /**
@@ -93,6 +97,8 @@ export type FetchJob = {
     attempt: number;
     next_attempt_at: number | null;
     restarted_from_zero: boolean;
+    /** Set by the server: a Delete was asked and the node has not answered yet. */
+    deleting?: boolean;
 };
 
 export type FetchCaps = {

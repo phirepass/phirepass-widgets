@@ -3,10 +3,11 @@ import { formatBytes, formatClock, formatDuration, formatEta, formatPercent, for
 
 /**
  * A row as the widget holds it: the node's latest `FetchJob`, plus what the
- * widget itself is waiting on (a Delete sent but not yet confirmed).
+ * widget itself is waiting on. `deleting` is set when this widget sent a
+ * Delete, or when the server says one is pending (a Delete sent from
+ * elsewhere, or while the node was offline).
  */
 export type Row = FetchJob & {
-    deleting?: boolean;
     /** Accepted by the server, but the node has not reported it yet (it may be offline). */
     waitingForNode?: boolean;
 };
@@ -37,7 +38,10 @@ export function applyProgress(prev: JobMap, job: FetchJob): { jobs: JobMap; comp
         const { [job.download_id]: _gone, ...rest } = prev;
         return { jobs: rest, first: false };
     }
-    const jobs = { ...prev, [job.download_id]: { ...job, deleting: before?.deleting } };
+    // Once deleting, a row stays so until the node says Deleted: its own
+    // progress in between does not carry the flag.
+    const deleting = job.deleting || before?.deleting || undefined;
+    const jobs = { ...prev, [job.download_id]: { ...job, deleting } };
     const completed = before && !isFinished(before.state) && isFinished(job.state) ? job : undefined;
     return { jobs, completed, first: !before };
 }
