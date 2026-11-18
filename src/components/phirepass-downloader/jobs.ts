@@ -50,9 +50,22 @@ export type Tab = 'active' | 'finished' | 'retrying';
 
 const ACTIVE_STATES: ReadonlySet<FetchState> = new Set(['Queued', 'Scheduled', 'Resolving', 'FetchingMetadata', 'Downloading', 'Verifying', 'Paused', 'Stopped', 'Unknown']);
 
+/**
+ * A finished torrent whose seeding was stopped. Its files are whole and
+ * Resume seeds again, so it stays with the finished rows. The agent keeps
+ * `seeding_since` through a Stop, which is what tells it apart from a
+ * download stopped half-way.
+ */
+export function isPausedSeeding(row: Row): boolean {
+    return row.state === 'Stopped' && row.kind === 'Torrent' && !!row.seeding_since;
+}
+
 export function tabOf(row: Row): Tab {
     if (row.state === 'Retrying') {
         return 'retrying';
+    }
+    if (isPausedSeeding(row)) {
+        return 'finished';
     }
     if (ACTIVE_STATES.has(row.state)) {
         return 'active';
@@ -152,7 +165,9 @@ export function playCheck(row: Row): PlayCheck {
     if (row.in_order) {
         return { play: true, file, switchToInOrder: false };
     }
-    return { play: false, file: null, switchToInOrder: row.kind === 'Torrent' };
+    // Paused seeding has nothing left to download, so switching the order
+    // would change nothing.
+    return { play: false, file: null, switchToInOrder: row.kind === 'Torrent' && !isPausedSeeding(row) };
 }
 
 export function streamUrl(base: string, nodeId: string, downloadId: string, fileIndex: number): string {
@@ -211,7 +226,7 @@ export function statePill(row: Row): Pill {
         case 'Completed':
             return { text: 'Completed', tone: 'ok' };
         case 'Stopped':
-            return { text: 'Stopped', tone: 'ps' };
+            return { text: isPausedSeeding(row) ? 'Seeding paused' : 'Stopped', tone: 'ps' };
         case 'Cancelled':
             return { text: 'Cancelled', tone: 'err' };
         default:
@@ -330,6 +345,12 @@ export function statsLine(row: Row, ctx: { now?: number; running?: number; sourc
             break;
         }
         case 'Stopped':
+            if (isPausedSeeding(row)) {
+                push(`${formatBytes(row.up_total)} uploaded`);
+                push(row.reason ?? 'Seeding paused by you');
+                push('Resume shares it again');
+                break;
+            }
             push(pct, { strong: true });
             push(row.reason ?? 'Stopped by you');
             push('Resume continues from here');

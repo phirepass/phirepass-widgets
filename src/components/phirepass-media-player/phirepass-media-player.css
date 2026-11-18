@@ -214,3 +214,12 @@ a.btn {
         animation: none;
     }
 }
+
+.link-note {
+    margin: 0;
+    padding: 6px 10px;
+    font-size: 12px;
+    color: var(--w-dim, #737f8c);
+    overflow-wrap: anywhere;
+    border-top: 1px solid var(--w-border, #262c35);
+}

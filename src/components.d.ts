@@ -7,10 +7,10 @@
 import { HTMLStencilElement, JSXBase } from "@stencil/core/internal";
 import { ChannelFactory, DownloadChannelFactory, DownloadChannelLike } from "./common/channel";
 import { ConnectionState, ProtocolMessage } from "./common/protocol";
-import { PositionStore, RemotePlaybackLike } from "./components/phirepass-media-player/player";
+import { LinkMinter, PositionStore, RemotePlaybackLike } from "./components/phirepass-media-player/player";
 export { ChannelFactory, DownloadChannelFactory, DownloadChannelLike } from "./common/channel";
 export { ConnectionState, ProtocolMessage } from "./common/protocol";
-export { PositionStore, RemotePlaybackLike } from "./components/phirepass-media-player/player";
+export { LinkMinter, PositionStore, RemotePlaybackLike } from "./components/phirepass-media-player/player";
 export namespace Components {
     /**
      * Remote Fetch: paste a link or a magnet, or drop a `.torrent`, and the node
@@ -136,6 +136,10 @@ export namespace Components {
           * Closes the player, saving where it stopped. The download is not affected.
          */
         "close": () => Promise<void>;
+        /**
+          * Makes the link a TV or VLC opens (T2.9). Defaults to POSTing `src`.
+         */
+        "linkMinter"?: LinkMinter;
         /**
           * Overrides the mime the extension implies.
          */
@@ -575,6 +579,10 @@ declare namespace LocalJSX {
           * Shown while casting, when the host knows the device's name.
          */
         "castDevice"?: string;
+        /**
+          * Makes the link a TV or VLC opens (T2.9). Defaults to POSTing `src`.
+         */
+        "linkMinter"?: LinkMinter;
         /**
           * Overrides the mime the extension implies.
          */

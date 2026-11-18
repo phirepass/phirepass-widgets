@@ -74,6 +74,20 @@ describe('tabs and counts', () => {
         expect(tabOf(row({ state: 'Cancelled' }))).toBe('finished');
     });
 
+    it('keeps a torrent whose seeding was stopped with the finished rows', () => {
+        const paused = row({ kind: 'Torrent', state: 'Stopped', seeding_since: 1, up_total: 2048, files: media('a.mkv') });
+        expect(tabOf(paused)).toBe('finished');
+        expect(statePill(paused).text).toBe('Seeding paused');
+        expect(statsLine(paused).map(s => s.text)).toEqual(['2 KB uploaded', 'Seeding paused by you', 'Resume shares it again']);
+        expect(playCheck(paused).switchToInOrder).toBe(false);
+        expect(isRunning(paused)).toBe(false);
+        expect(isClearable(paused)).toBe(false);
+        // A torrent stopped before it finished, and a link, stay Active.
+        expect(tabOf(row({ kind: 'Torrent', state: 'Stopped', seeding_since: null }))).toBe('active');
+        expect(tabOf(row({ kind: 'Http', state: 'Stopped', seeding_since: 1 }))).toBe('active');
+        expect(statePill(row({ kind: 'Torrent', state: 'Stopped', seeding_since: null })).text).toBe('Stopped');
+    });
+
     it('does not count Retrying, Stopped or Seeding as running', () => {
         expect(isRunning(row({ state: 'Downloading' }))).toBe(true);
         expect(isRunning(row({ state: 'Retrying' }))).toBe(false);
@@ -117,6 +131,14 @@ describe('playCheck', () => {
     it('offers in order for a Fastest torrent instead of Play', () => {
         expect(playCheck(row({ kind: 'Torrent', state: 'Downloading', in_order: false, files: media('a.mkv') }))).toEqual({ play: false, file: null, switchToInOrder: true });
         expect(playCheck(row({ kind: 'Http', state: 'Downloading', in_order: false, files: media('a.mkv') })).switchToInOrder).toBe(false);
+    });
+
+    it('plays a link by its own name as file 0, the shape the agent sends', () => {
+        const link = row({ kind: 'Http', state: 'Downloading', in_order: true, files: [], name: 'film.mp4', total_bytes: 1000, done_bytes: 400 });
+        const check = playCheck(link);
+        expect(check.play).toBe(true);
+        expect(check.file?.index).toBe(0);
+        expect(playCheck({ ...link, total_bytes: null }).play).toBe(false);
     });
 
     it('never plays a non-media file, a queued job or a row being deleted', () => {

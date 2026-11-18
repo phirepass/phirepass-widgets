@@ -59,6 +59,38 @@ export function castBlocker(name: string, mime?: string): string | null {
     return null;
 }
 
+/**
+ * Turns a stream URL into one a TV or VLC can open without the dashboard's
+ * cookie: a stream ticket (T2.9) that lasts the organisation's “Cast and player
+ * links last”. `null` when the server would not make one.
+ */
+export type LinkMinter = (src: string) => Promise<string | null>;
+
+/** `src` with its ticket, absolute, since it leaves this page. */
+export function ticketUrl(src: string, ticket: string, base = globalThis.location?.href): string {
+    // An invalid base throws even for an absolute src, so it is used only
+    // when src needs one.
+    const url = /^[a-z][a-z0-9+.-]*:/i.test(src) ? new URL(src) : new URL(src, base);
+    url.searchParams.set('ticket', ticket);
+    return url.href;
+}
+
+/** POSTs the stream URL with the session cookie; the server answers `{ ticket }`. */
+export function fetchLinkMinter(fetcher: typeof fetch = (input, init) => fetch(input, init)): LinkMinter {
+    return async src => {
+        try {
+            const res = await fetcher(src, { method: 'POST', credentials: 'include' });
+            if (!res.ok) {
+                return null;
+            }
+            const body = (await res.json()) as { ticket?: unknown };
+            return typeof body.ticket === 'string' && body.ticket ? ticketUrl(src, body.ticket) : null;
+        } catch {
+            return null;
+        }
+    };
+}
+
 /** Nothing is saved in the first 30 seconds. */
 export const SAVE_AFTER_SECS = 30;
 export const SAVE_EVERY_MS = 10_000;

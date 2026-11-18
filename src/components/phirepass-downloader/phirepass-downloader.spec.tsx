@@ -69,6 +69,33 @@ describe('phirepass-downloader', () => {
         await until(() => !start().hasAttribute('disabled'), waitForChanges, 'Start enabled');
     });
 
+    it('hides every way to add a .torrent when the node has torrents off', async () => {
+        const dropZone = async (torrents: boolean) => {
+            const { root, shadow, waitForChanges } = await mount({ compact: true }, { downloads: { caps: caps({ torrents }), jobs: [] } });
+            await waitForChanges();
+            await (root as any).openFetch();
+            await until(() => !!shadow().querySelector('#fetch-link'), waitForChanges, 'the dialog');
+            const text = shadow().textContent ?? '';
+            return { drop: !!shadow().querySelector('button.drop'), mentions: /Choose a \.torrent file/.test(text) };
+        };
+        expect(await dropZone(true)).toEqual({ drop: true, mentions: true });
+        expect(await dropZone(false)).toEqual({ drop: false, mentions: false });
+    });
+
+    it('refuses a .torrent over 2 MB when it is chosen (B6)', async () => {
+        const { root, shadow, waitForChanges } = await mount({ compact: true });
+        await waitForChanges();
+        await (root as any).openFetch();
+        await until(() => !!shadow().querySelector('input[type="file"]'), waitForChanges, 'the picker');
+        const input = shadow().querySelector<HTMLInputElement>('input[type="file"]')!;
+        const big = new File([new Uint8Array(3 * 1024 * 1024)], 'big.torrent', { type: 'application/x-bittorrent' });
+        Object.defineProperty(input, 'files', { value: [big], configurable: true });
+        input.dispatchEvent(new Event('change'));
+        await until(() => /Too large/.test(shadow().textContent ?? ''), waitForChanges, 'the refusal');
+        const start = Array.from(shadow().querySelectorAll('button')).find(b => b.textContent?.trim() === 'Start download') as HTMLButtonElement;
+        expect(start.hasAttribute('disabled')).toBe(true);
+    });
+
     it('reports the number of running downloads', async () => {
         const counts: number[] = [];
         const { root, waitForChanges, ref } = await mount(

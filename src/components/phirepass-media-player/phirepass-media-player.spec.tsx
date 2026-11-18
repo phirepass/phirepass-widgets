@@ -60,4 +60,27 @@ describe('phirepass-media-player', () => {
         await waitForChanges();
         expect(closed).toHaveBeenCalledTimes(1);
     });
+
+    it('casts from a ticket URL and copies the same link for VLC', async () => {
+        const minter = vi.fn(async (src: string) => `https://relay.example${src}?ticket=T`);
+        const prompt = vi.fn(async () => {});
+        const remote = { state: 'disconnected', prompt, watchAvailability: async (cb: (a: boolean) => void) => (cb(true), 1), cancelWatchAvailability: async () => {}, addEventListener() {}, removeEventListener() {} };
+        const writeText = vi.fn(async () => {});
+        Object.defineProperty(navigator, 'clipboard', { value: { writeText }, configurable: true });
+        const { root, waitForChanges } = await render(h('phirepass-media-player', { src: '/s/9', name: 'film.mp4', linkMinter: minter, remotePlayback: remote }));
+        await waitForChanges();
+        root.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Cast"]')!.click();
+        await new Promise(r => setTimeout(r, 0));
+        await waitForChanges();
+        expect(minter).toHaveBeenCalledWith('/s/9');
+        expect(prompt).toHaveBeenCalled();
+        expect(root.shadowRoot!.querySelector('video')!.src).toBe('https://relay.example/s/9?ticket=T');
+
+        root.shadowRoot!.querySelector<HTMLButtonElement>('[aria-label="Copy link for VLC"]')!.click();
+        await new Promise(r => setTimeout(r, 0));
+        await waitForChanges();
+        expect(writeText).toHaveBeenCalledWith('https://relay.example/s/9?ticket=T');
+        expect(minter).toHaveBeenCalledTimes(1);
+        expect(root.shadowRoot!.textContent).toContain('Link copied');
+    });
 });

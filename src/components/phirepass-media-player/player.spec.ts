@@ -1,5 +1,5 @@
-import { afterEach, describe, expect, it } from 'vitest';
-import { castBlocker, isAudio, isPlayableName, isWatched, localPositionStore, mimeFor, positionAction } from './player';
+import { afterEach, describe, expect, it, vi } from 'vitest';
+import { castBlocker, fetchLinkMinter, isAudio, isPlayableName, isWatched, localPositionStore, mimeFor, positionAction, ticketUrl } from './player';
 
 describe('mime and kind', () => {
     it('maps extensions the way the stream server does', () => {
@@ -59,5 +59,28 @@ describe('localPositionStore', () => {
     it('ignores garbage in storage', async () => {
         window.localStorage.setItem('phirepass.player.position.bad', '{not json');
         expect(await localPositionStore.get('bad')).toBeNull();
+    });
+});
+
+describe('stream links (T2.9)', () => {
+    it('puts the ticket on the stream URL, absolute', () => {
+        expect(ticketUrl('/api/web/stream/n/d/0', 'abc', 'https://www.phirepass.com/x')).toBe('https://www.phirepass.com/api/web/stream/n/d/0?ticket=abc');
+        expect(ticketUrl('https://relay.example/api/web/stream/n/t/tok', 'a-b_c')).toBe('https://relay.example/api/web/stream/n/t/tok?ticket=a-b_c');
+    });
+
+    it('POSTs the stream URL with the cookie and builds the link', async () => {
+        const fetcher = vi.fn(async () => ({ ok: true, json: async () => ({ ticket: 'T1', expires_in: 21600 }) }) as unknown as Response);
+        const link = await fetchLinkMinter(fetcher as unknown as typeof fetch)('https://relay.example/api/web/stream/n/d/0');
+        expect(link).toBe('https://relay.example/api/web/stream/n/d/0?ticket=T1');
+        expect(fetcher).toHaveBeenCalledWith('https://relay.example/api/web/stream/n/d/0', { method: 'POST', credentials: 'include' });
+    });
+
+    it('answers null when the server refuses or is unreachable', async () => {
+        const refused = vi.fn(async () => ({ ok: false, json: async () => ({}) }) as unknown as Response);
+        expect(await fetchLinkMinter(refused as unknown as typeof fetch)('https://r/x')).toBeNull();
+        const down = vi.fn(async () => {
+            throw new Error('offline');
+        });
+        expect(await fetchLinkMinter(down as unknown as typeof fetch)('https://r/x')).toBeNull();
     });
 });

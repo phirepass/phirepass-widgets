@@ -1,7 +1,7 @@
 import { Component, Element, Event, EventEmitter, Host, Method, Prop, State, Watch, h } from '@stencil/core';
 import { formatBytes, formatClock, formatDay } from '../phirepass-downloader/format';
 import { Icon } from '../phirepass-downloader/views/icons';
-import { PositionStore, RemotePlaybackLike, SAVE_EVERY_MS, StoredPosition, castBlocker, isAudio, localPositionStore, positionAction } from './player';
+import { LinkMinter, PositionStore, RemotePlaybackLike, SAVE_EVERY_MS, StoredPosition, castBlocker, fetchLinkMinter, isAudio, localPositionStore, positionAction } from './player';
 
 /**
  * What the player is showing. `buffering` is before the first frame;
@@ -62,6 +62,9 @@ export class PhirepassMediaPlayer {
     /** Stands in for `video.remote`, for demos and tests (like `channelFactory`). */
     @Prop() remotePlayback?: RemotePlaybackLike;
 
+    /** Makes the link a TV or VLC opens (T2.9). Defaults to POSTing `src`. */
+    @Prop() linkMinter?: LinkMinter;
+
     /** Shown while casting, when the host knows the device's name. */
     @Prop() castDevice?: string;
 
@@ -71,6 +74,9 @@ export class PhirepassMediaPlayer {
     @State() phase: PlayerPhase = 'buffering';
     @State() stored: StoredPosition | null = null;
     @State() castAvailable = false;
+    /** The ticket URL the element plays from once casting was asked for. */
+    @State() castSrc: string | null = null;
+    @State() linkNote: string | null = null;
     @State() currentTime = 0;
     @State() duration = 0;
 
@@ -111,6 +117,7 @@ export class PhirepassMediaPlayer {
 
     @Watch('src')
     onSrc() {
+        this.castSrc = null;
         this.everPlayed = false;
         this.phase = 'buffering';
     }
@@ -121,6 +128,52 @@ export class PhirepassMediaPlayer {
         await this.savePosition(true);
         this.media?.pause?.();
         this.playerClose.emit();
+    }
+
+    private get minter(): LinkMinter {
+        return this.linkMinter ?? fetchLinkMinter();
+    }
+
+    /**
+     * The TV fetches the file itself and has no cookie, so the element first
+     * moves to a ticket URL (same bytes, same position), then the device picker
+     * opens. A ticket that cannot be had still opens the picker: on a
+     * development stack the plain URL plays.
+     */
+    private async cast() {
+        if (!this.castSrc) {
+            const url = await this.minter(this.src);
+            const media = this.media;
+            if (url && media) {
+                const at = media.currentTime;
+                const playing = !media.paused;
+                this.castSrc = url;
+                media.src = url;
+                this.resumeAt = at;
+                if (at > 0) {
+                    media.currentTime = at;
+                }
+                if (playing) {
+                    void media.play?.()?.catch?.(() => undefined);
+                }
+            }
+        }
+        await this.remote()?.prompt().catch(() => undefined);
+    }
+
+    /** “Copy link for VLC”: the same ticket, on the clipboard. */
+    private async copyLink() {
+        const url = this.castSrc ?? (await this.minter(this.src));
+        if (!url) {
+            this.linkNote = 'Could not make a link.';
+            return;
+        }
+        try {
+            await navigator.clipboard.writeText(url);
+            this.linkNote = 'Link copied. It works in VLC until it expires.';
+        } catch {
+            this.linkNote = url;
+        }
     }
 
     private remote(): RemotePlaybackLike | undefined {
@@ -282,7 +335,7 @@ export class PhirepassMediaPlayer {
         const hideMedia = this.phase === 'prompt' || this.phase === 'unsupported' || this.phase === 'stopped' || this.phase === 'casting';
         const common = {
             ref: (el?: HTMLMediaElement) => this.bindMedia(el),
-            src: this.src,
+            src: this.castSrc ?? this.src,
             controls: true,
             // Play was pressed to get here; a stored position asks first (G6).
             preload: this.phase === 'prompt' ? 'metadata' : 'auto',
@@ -330,11 +383,14 @@ export class PhirepassMediaPlayer {
                             disabled={!!blocked}
                             title={blocked ?? 'Cast'}
                             aria-label={blocked ? `Cast unavailable: ${blocked}` : 'Cast'}
-                            onClick={() => void this.remote()?.prompt().catch(() => undefined)}
+                            onClick={() => void this.cast()}
                         >
                             <Icon name="cast" size={15} />
                         </button>
                     )}
+                    <button type="button" class="ib" title="Copy link for VLC" aria-label="Copy link for VLC" onClick={() => void this.copyLink()}>
+                        <Icon name="link" size={15} />
+                    </button>
                     {!audio && airplay && (
                         <button type="button" class="ib" title="AirPlay" aria-label="AirPlay" onClick={() => (this.media as any).webkitShowPlaybackTargetPicker()}>
                             <Icon name="cast" size={15} />
@@ -348,6 +404,11 @@ export class PhirepassMediaPlayer {
                     {audio ? <audio {...common}></audio> : <video {...common}></video>}
                     {this.renderStage()}
                 </div>
+                {this.linkNote && (
+                    <p class="link-note" role="status">
+                        {this.linkNote}
+                    </p>
+                )}
             </Host>
         );
     }
