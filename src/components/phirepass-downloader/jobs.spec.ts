@@ -16,6 +16,9 @@ import {
     renamedByNode,
     retryingForSecs,
     sortRows,
+    statePill,
+    statsLine,
+    finishedLine,
     streamUrl,
     summarize,
     tabOf,
@@ -51,6 +54,15 @@ describe('applyProgress', () => {
         expect(applyProgress(map, { ...j, done_bytes: 1 }).jobs[j.download_id].deleting).toBe(true);
         expect(applyProgress(map, { ...j, state: 'Deleted' }).jobs).toEqual({});
         expect(applyProgress({}, { ...j, state: 'Deleted' }).jobs).toEqual({});
+    });
+
+    it('shows Deleting for a delete sent from elsewhere or while the node was offline', () => {
+        const j = job({ state: 'Stopped' });
+        const told = applyProgress({}, { ...j, deleting: true }).jobs;
+        expect(told[j.download_id].deleting).toBe(true);
+        // The node's own progress before it applies the Delete keeps it.
+        expect(applyProgress(told, { ...j, state: 'Stopped' }).jobs[j.download_id].deleting).toBe(true);
+        expect(applyProgress({}, j).jobs[j.download_id].deleting).toBeUndefined();
     });
 });
 
@@ -181,5 +193,35 @@ describe('isNoSpace', () => {
         [null, false],
     ])('%s → %s', (reason, expected) => {
         expect(isNoSpace(reason)).toBe(expected);
+    });
+});
+
+/**
+ * The real channel hands a Rust `None` over as an absent field, not `null`
+ * (checked against the WASM build). Every row helper must read such a job
+ * exactly as it reads the `null` form the fixtures use.
+ */
+describe('a job as the real channel delivers it', () => {
+    const OPTIONAL = ['total_bytes', 'finished_at', 'reason', 'requested_by', 'sub_dir', 'pause_reason', 'seeding_since', 'info_hash', 'retry_reason', 'next_attempt_at'] as const;
+    const absent = (r: Row): Row => {
+        const copy: Record<string, unknown> = { ...r };
+        for (const key of OPTIONAL) {
+            if (copy[key] === null) delete copy[key];
+        }
+        return copy as Row;
+    };
+    const states = ['Queued', 'Downloading', 'Paused', 'Retrying', 'Seeding', 'Completed', 'Stopped', 'Cancelled'] as const;
+
+    it.each(states)('reads a %s row the same with absent fields as with nulls', state => {
+        const withNulls = row({ state, done_bytes: 2048, down_bps: 512 });
+        const asSent = absent(withNulls);
+        expect(Object.keys(asSent).length).toBeLessThan(Object.keys(withNulls).length);
+        const now = 1_763_200_000_000;
+        expect(statsLine(asSent, { now })).toEqual(statsLine(withNulls, { now }));
+        expect(statePill(asSent)).toEqual(statePill(withNulls));
+        expect(finishedLine(asSent, now)).toEqual(finishedLine(withNulls, now));
+        expect(folderOf(asSent)).toEqual(folderOf(withNulls));
+        expect(summarize([asSent])).toEqual(summarize([withNulls]));
+        expect(isStuck(asSent)).toEqual(isStuck(withNulls));
     });
 });

@@ -99,6 +99,8 @@ export const EMPTY_AUTH: AuthForm = { mode: 'none', username: '', password: '', 
  * what is missing. `null` with no error means no login.
  */
 export function buildSourceAuth(form: AuthForm): { auth: SourceAuth | null; error?: string } {
+    // The node refuses these too (`SourceAuth::problem`); this answers sooner.
+    const breaks = (...values: string[]) => values.some(v => /[\r\n\0]/.test(v));
     switch (form.mode) {
         case 'none':
             return { auth: null };
@@ -106,10 +108,19 @@ export function buildSourceAuth(form: AuthForm): { auth: SourceAuth | null; erro
             if (!form.username) {
                 return { auth: null, error: 'Enter a username.' };
             }
+            if (form.username.includes(':')) {
+                return { auth: null, error: 'A username cannot contain a colon.' };
+            }
+            if (breaks(form.username, form.password)) {
+                return { auth: null, error: 'A login cannot contain line breaks.' };
+            }
             return { auth: { Basic: { username: form.username, password: form.password } } };
         case 'bearer':
             if (!form.token.trim()) {
                 return { auth: null, error: 'Enter a token.' };
+            }
+            if (breaks(form.token)) {
+                return { auth: null, error: 'A login cannot contain line breaks.' };
             }
             return { auth: { Bearer: { token: form.token.trim() } } };
         case 'header': {
@@ -119,6 +130,9 @@ export function buildSourceAuth(form: AuthForm): { auth: SourceAuth | null; erro
             }
             if (DENIED_AUTH_HEADERS.has(name.toLowerCase())) {
                 return { auth: null, error: `${name} cannot be set here.` };
+            }
+            if (breaks(form.headerValue)) {
+                return { auth: null, error: 'A login cannot contain line breaks.' };
             }
             return { auth: { Header: { name, value: form.headerValue } } };
         }
