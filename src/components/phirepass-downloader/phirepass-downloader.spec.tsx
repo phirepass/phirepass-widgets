@@ -107,4 +107,20 @@ describe('phirepass-downloader', () => {
         ref.current!.progress(job({ state: 'Queued' }));
         await until(() => counts.includes(2), waitForChanges, 'a count of 2');
     });
+
+    it('stops with the box as ticked even when confirm lands before the re-render (K1)', async () => {
+        const { ref, shadow, waitForChanges } = await mount({}, { downloads: { caps: caps(), jobs: [job({ name: 'big.iso', state: 'Downloading', done_bytes: 1, total_bytes: 10 })] } });
+        await until(() => !!shadow().querySelector('.job'), waitForChanges, 'a row');
+        const stop = Array.from(shadow().querySelectorAll<HTMLButtonElement>('.job button')).find(b => b.getAttribute('aria-label') === 'Stop')!;
+        stop.click();
+        await until(() => !!shadow().querySelector('[aria-label="Stop this download?"]'), waitForChanges, 'the dialog');
+        const dialog = shadow().querySelector('[aria-label="Stop this download?"]')!;
+        const box = dialog.querySelector<HTMLInputElement>('input[type=checkbox]')!;
+        const confirm = Array.from(dialog.querySelectorAll('button')).find(b => b.textContent?.trim() === 'Stop download')!;
+        // No waitForChanges between the two: the button still carries the pre-tick handler.
+        box.checked = true;
+        box.dispatchEvent(new Event('change'));
+        confirm.click();
+        expect(ref.current!.callsTo('send_download_stop')[0].slice(1, 2)).toEqual([true]);
+    });
 });

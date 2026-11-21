@@ -810,6 +810,16 @@ export class PhirepassDownloader {
 
     // ---------------------------------------------------------------- render
 
+    /**
+     * The dialog's state as it is now, not as it was when the dialog last rendered.
+     * Handlers run between a state change and the re-render it schedules (tick a box,
+     * then click confirm before the frame), so reading `c` from the render closure
+     * would act on the stale value.
+     */
+    private latest<C extends Confirm>(c: C): C {
+        return this.confirm?.kind === c.kind ? (this.confirm as C) : c;
+    }
+
     private renderConfirm() {
         const c = this.confirm;
         if (!c) {
@@ -822,10 +832,11 @@ export class PhirepassDownloader {
                     <ConfirmStop
                         row={c.row}
                         discard={c.discard}
-                        onDiscard={discard => (this.confirm = { ...c, discard })}
+                        onDiscard={discard => (this.confirm = { ...this.latest(c), discard })}
                         onCancel={cancel}
                         onConfirm={() => {
-                            this.sendStop(c.row, c.discard);
+                            const cur = this.latest(c);
+                            this.sendStop(cur.row, cur.discard);
                             this.confirm = null;
                         }}
                     />
@@ -836,10 +847,11 @@ export class PhirepassDownloader {
                         row={c.row}
                         nodeName={this.name}
                         deleteFile={c.deleteFile}
-                        onDeleteFile={deleteFile => (this.confirm = { ...c, deleteFile })}
+                        onDeleteFile={deleteFile => (this.confirm = { ...this.latest(c), deleteFile })}
                         onCancel={cancel}
                         onConfirm={() => {
-                            this.sendDelete(c.row, c.deleteFile);
+                            const cur = this.latest(c);
+                            this.sendDelete(cur.row, cur.deleteFile);
                             this.confirm = null;
                         }}
                     />
@@ -861,10 +873,10 @@ export class PhirepassDownloader {
                     <ConfirmTorrent
                         nodeName={this.name}
                         dontAsk={c.dontAsk}
-                        onDontAsk={dontAsk => (this.confirm = { ...c, dontAsk })}
+                        onDontAsk={dontAsk => (this.confirm = { ...this.latest(c), dontAsk })}
                         onCancel={cancel}
                         onConfirm={() => {
-                            if (c.dontAsk) {
+                            if (this.latest(c).dontAsk) {
                                 writeTorrentAck();
                                 this.torrentAcked = true;
                             }
