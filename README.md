@@ -16,18 +16,19 @@ Every component takes a `channelFactory` (or the downloader an injected `channel
 
 ## Development
 
-Node is pinned in `.nvmrc` (`nvm use`).
+Bun is the package manager / script runner (version pinned in `.bun-version`); Node is still the runtime for Stencil/Vitest and is pinned in `.nvmrc` (`nvm use`).
 
 ```bash
-npm start                 # stencil dev server
-npm run storybook         # stencil build, then Storybook on :6006
-npm test                  # spec tests (vitest, Stencil environment)
-npm run test:storybook    # every story's play function in headless Chromium
-npm run test:all          # both
-npm run build             # production build
+bun install               # install deps (bun.lock)
+bun start                 # stencil dev server
+bun run storybook         # stencil build, then Storybook on :6006
+bun run test              # spec tests (vitest, Stencil environment)
+bun run test:storybook    # every story's play function in headless Chromium
+bun run test:all          # both
+bun run build             # production build
 ```
 
-`npm run test:storybook` needs Chromium once: `npx playwright install chromium`.
+`bun run test:storybook` needs Chromium once: `bunx playwright install chromium`.
 
 Stories live in `stories/`: one file per existing widget and one per Remote Fetch screen group (`stories/remote-fetch/1-sftp` … `9-notices`). Each screen is its own story, and its `play` function is its test. The mock channel (`src/testing/mock-channel.ts`) and fixtures (`src/testing/fixtures.ts`) are shared by stories and specs.
 
@@ -56,20 +57,20 @@ git remote rm origin
 and run:
 
 ```bash
-npm install
-npm start
+bun install
+bun start
 ```
 
 To build the component for production, run:
 
 ```bash
-npm run build
+bun run build
 ```
 
 To run the unit tests for the components, run:
 
 ```bash
-npm test
+bun run test
 ```
 
 Need help? Check out our docs [here](https://stenciljs.com/docs/my-first-component).

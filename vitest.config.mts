@@ -21,8 +21,8 @@ export default defineVitestConfig({
             },
             {
                 // Every story's `play` function, run in a real Chromium against the
-                // built widgets (`dist/components`): `npm run test:storybook`.
-                plugins: [storybookTest({ configDir: `${dirname}/.storybook`, storybookScript: 'npm run storybook -- --ci' })],
+                // built widgets (`dist/components`): `bun run test:storybook`.
+                plugins: [storybookTest({ configDir: `${dirname}/.storybook`, storybookScript: 'bun run storybook --ci' })],
                 test: {
                     name: 'storybook',
                     browser: {

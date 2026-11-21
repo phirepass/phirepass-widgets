@@ -7,4 +7,4 @@ run:
 	bun run start
 
 test:
-	npm test
+	bun run test
