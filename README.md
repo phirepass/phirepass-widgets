@@ -7,12 +7,8 @@ Framework-agnostic web components for PhirePass, built with Stencil:
 | Element | What it is |
 |---|---|
 | `<phirepass-terminal>` | SSH terminal (xterm.js) |
-| `<phirepass-sftp-client>` | SFTP browser; hosts a compact `<phirepass-downloader>` and a Fetch button when the channel supports Remote Fetch |
+| `<phirepass-sftp-client>` | SFTP browser |
 | `<phirepass-rdp>` | RDP client |
-| `<phirepass-downloader>` | Remote Fetch: the node downloads links, magnets and `.torrent` files into its own folder. `compact` for the drawer inside the SFTP browser, standalone otherwise |
-| `<phirepass-media-player>` | Plays a file from the node with the browser's own `<video>`/`<audio>` (resume position, cast) |
-
-Every component takes a `channelFactory` (or the downloader an injected `channel`), which is how the stories and tests run without a server. The downloader hides itself (and the SFTP browser hides Fetch) until `phirepass-channel` exposes the `send_download_*` methods.
 
 ## Development
 
@@ -21,16 +17,9 @@ Bun is the package manager / script runner (version pinned in `.bun-version`); N
 ```bash
 bun install               # install deps (bun.lock)
 bun start                 # stencil dev server
-bun run storybook         # stencil build, then Storybook on :6006
 bun run test              # spec tests (vitest, Stencil environment)
-bun run test:storybook    # every story's play function in headless Chromium
-bun run test:all          # both
 bun run build             # production build
 ```
-
-`bun run test:storybook` needs Chromium once: `bunx playwright install chromium`.
-
-Stories live in `stories/`: one file per existing widget and one per Remote Fetch screen group (`stories/remote-fetch/1-sftp` … `9-notices`). Each screen is its own story, and its `play` function is its test. The mock channel (`src/testing/mock-channel.ts`) and fixtures (`src/testing/fixtures.ts`) are shared by stories and specs.
 
 ---
 

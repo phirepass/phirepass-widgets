@@ -51,12 +51,6 @@ jobs:
             - name: Test
               run: bun run test
 
-            - name: Install Playwright Chromium
-              run: bunx playwright install chromium --with-deps
-
-            - name: Storybook tests
-              run: bun run test:storybook
-
             - name: Build and publish package
               run: |
                   npm version patch -m "Release %s

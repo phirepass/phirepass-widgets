@@ -75,22 +75,6 @@ Type: `Promise<void>`
 
 
 
-## Dependencies
-
-### Depends on
-
-- [phirepass-downloader](../phirepass-downloader)
-- [phirepass-media-player](../phirepass-media-player)
-
-### Graph
-```mermaid
-graph TD;
-  phirepass-sftp-client --> phirepass-downloader
-  phirepass-sftp-client --> phirepass-media-player
-  phirepass-downloader --> phirepass-media-player
-  style phirepass-sftp-client fill:#f9f,stroke:#333,stroke-width:4px
-```
-
 ----------------------------------------------
 
 *Built with [StencilJS](https://stenciljs.com/)*

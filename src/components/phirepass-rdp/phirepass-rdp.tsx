@@ -39,30 +39,13 @@ type IronRemoteDesktopElement = HTMLElement & {
  * headers nor a subprotocol on the socket it opens. See `RDP.md` in
  * `phirepass-rs` for why the session is split across two sockets.
  */
-/** What the RDP widget calls on its channel. */
-type RdpChannelLike = Pick<
-    PhirepassChannel,
-    | 'connect'
-    | 'disconnect'
-    | 'is_connected'
-    | 'authenticate'
-    | 'start_heartbeat'
-    | 'stop_heartbeat'
-    | 'on_connection_open'
-    | 'on_connection_close'
-    | 'on_connection_error'
-    | 'on_connection_message'
-    | 'on_protocol_message'
-    | 'open_rdp_tunnel'
->;
-
 @Component({
     tag: 'phirepass-rdp',
     styleUrl: 'phirepass-rdp.css',
     shadow: true,
 })
 export class PhirepassRdp {
-    private channel!: RdpChannelLike;
+    private channel!: PhirepassChannel;
     private containerEl?: HTMLDivElement;
     private ironEl?: IronRemoteDesktopElement;
     private userInteraction?: UserInteraction;
@@ -195,14 +178,6 @@ export class PhirepassRdp {
     @Prop()
     serverId?: string;
 
-    /**
-     * Supplies the channel instead of a WebSocket to the server — for demos,
-     * screenshots and tests, as on the terminal and SFTP client. A property
-     * only; read once, when the widget connects.
-     */
-    @Prop()
-    channelFactory?: (endpoint: string, nodeId: string, serverId?: string) => RdpChannelLike;
-
     @Watch('serverId')
     onServerIdChange(_newValue?: string, _oldValue?: string) {
         this.onNodeIdChange(this.nodeId, this.nodeId);
@@ -237,9 +212,7 @@ export class PhirepassRdp {
         // disconnects and reconnects it; the second life is a real one.
         this.disposed = false;
 
-        if (!this.channelFactory) {
-            await init();
-        }
+        await init();
         this.open_comms();
         this.runtimeReady = true;
 
@@ -357,9 +330,7 @@ export class PhirepassRdp {
     }
 
     private open_comms() {
-        if (this.channelFactory) {
-            this.channel = this.channelFactory(`${this.create_web_socket_endpoint()}/api/web/ws`, this.nodeId!, this.serverId || undefined);
-        } else if (this.serverId) {
+        if (this.serverId) {
             this.channel = new PhirepassChannel(`${this.create_web_socket_endpoint()}/api/web/ws`, this.nodeId!, this.serverId!);
         } else {
             this.channel = new PhirepassChannel(`${this.create_web_socket_endpoint()}/api/web/ws`, this.nodeId!);

@@ -1,19 +1,7 @@
-import { Component, Element, Host, Method, Prop, State, Watch, h } from '@stencil/core';
+import { Component, Host, Method, Prop, State, Watch, h } from '@stencil/core';
 import { Event, EventEmitter } from '@stencil/core';
 import init, { Channel as PhirepassChannel } from 'phirepass-channel';
-import { supportsDownloads } from '../../common/channel';
 import type { ChannelFactory, ChannelLike } from '../../common/channel';
-import { DOWNLOADER_MSG_ID_BASE, isDownloadFrame } from '../../common/fetch';
-import {
-    FetchButton,
-    PartDeleteDialog,
-    TorrentContextMenu,
-    TorrentMenu,
-    folderOfCompleted,
-    isPartFile,
-    isPlayableFile,
-    sameFolder,
-} from './phirepass-sftp-client.fetch';
 
 import svg from './phirepass-sftp-client.logo.svg';
 import max from './phirepass-sftp-client.max.svg';
@@ -94,8 +82,6 @@ type SortKey = 'name' | 'size' | 'modified';
     shadow: true,
 })
 export class PhirepassSftpClient {
-    @Element() el_host!: HTMLElement;
-
     private channel!: ChannelLike;
     private domReady = false;
     private runtimeReady = false;
@@ -365,101 +351,6 @@ export class PhirepassSftpClient {
 
     @State()
     sort_asc = true;
-
-    // ---- Remote Fetch (hosted <phirepass-downloader>) ----
-
-    /** True once the channel is authenticated: the downloader shares it from then on. */
-    @State()
-    channel_ready = false;
-
-    /** Running downloads, for the Fetch button's badge. */
-    @State()
-    fetch_count = 0;
-
-    /** Files a download just finished into the open folder, highlighted as new. */
-    @State()
-    fresh_names: Array<string> = [];
-
-    /** K3: a part file whose download a delete would end. */
-    @State()
-    part_delete: { download_id: string; name: string; busy: boolean } | null = null;
-
-    @State()
-    torrent_menu: TorrentMenu | null = null;
-
-    /** A listing file open in the player (not a download). */
-    @State()
-    listing_player: { src: string; name: string; key: string } | null = null;
-
-    private downloaderEl?: HTMLPhirepassDownloaderElement;
-
-    private fetch_enabled(): boolean {
-        return supportsDownloads(this.channel);
-    }
-
-    private stream_base(): string {
-        const protocol = this.allowInsecure ? 'http' : 'https';
-        const standard = (!this.allowInsecure && this.serverPort === 443) || (this.allowInsecure && this.serverPort === 80);
-        return `${protocol}://${this.serverHost}${standard ? '' : `:${this.serverPort}`}`;
-    }
-
-    private on_fetch_completed(detail: { dest_root: string; sub_dir: string | null; name: string }) {
-        if (!sameFolder(folderOfCompleted(detail), this.current_dir)) {
-            return;
-        }
-        this.fresh_names = [...this.fresh_names.filter((n) => n !== detail.name), detail.name];
-        this.refresh_directory();
-    }
-
-    private on_show_in_folder(detail: { path: string; name: string }) {
-        this.fresh_names = [detail.name];
-        if (!sameFolder(detail.path, this.current_dir)) {
-            this.list_breadcrumb(detail.path);
-        }
-    }
-
-    private async on_row_context_menu(item: SFTPListItem, event: MouseEvent) {
-        if (item.kind !== 'File' || !/\.torrent$/i.test(item.name) || !this.downloaderEl) {
-            return;
-        }
-        const path = this.item_path(item);
-        event.preventDefault();
-        const rel = await this.downloaderEl.torrentPathFor(path);
-        if (rel === null) {
-            return;
-        }
-        const box = this.el_host.getBoundingClientRect();
-        this.selected_item = item;
-        this.torrent_menu = { x: event.clientX - box.left, y: event.clientY - box.top, path, name: item.name };
-    }
-
-    private async play_listing_file(item: SFTPListItem, event: Event) {
-        event.preventDefault();
-        event.stopPropagation();
-        const channel = this.channel as ChannelLike & { send_sftp_open_stream?: (node_id: string, sid: number, path: string, msg_id?: number) => void };
-        if (typeof channel.send_sftp_open_stream !== 'function') {
-            return;
-        }
-        const path = this.item_path(item);
-        try {
-            const answer = (await this.run_op('play', (msgId) => channel.send_sftp_open_stream!(this.nodeId, this.session_id!, path, msgId))) as unknown as { result: string; token?: string };
-            if (answer.result !== 'Stream' || !answer.token) {
-                throw new Error('The node did not open a stream.');
-            }
-            this.listing_player = {
-                src: `${this.stream_base()}/api/web/stream/${encodeURIComponent(this.nodeId)}/t/${encodeURIComponent(answer.token)}`,
-                name: item.name,
-                key: `node:${this.nodeId}:${path}`,
-            };
-        } catch (err) {
-            this.error_message = this.error_text(err);
-            this.show_error = true;
-        }
-    }
-
-    private listing_can_play(): boolean {
-        return typeof (this.channel as { send_sftp_open_stream?: unknown } | undefined)?.send_sftp_open_stream === 'function';
-    }
 
     private toggle_max() {
         this.maximizeEvent?.emit(!this.max);
@@ -743,7 +634,6 @@ export class PhirepassSftpClient {
         this.channel.start_heartbeat(this.heartbeatInterval <= 15_000 ? 30_000 : this.heartbeatInterval);
         this.channel.open_sftp_tunnel(this.nodeId, this.serviceId);
         this.status = 'Connected';
-        this.channel_ready = true;
     }
 
     private handle_tunnel_opened(web: ProtocolMessageWebTunnelOpened) {
@@ -765,9 +655,6 @@ export class PhirepassSftpClient {
             this.filter = '';
         }
 
-        if (web.path !== this.current_dir) {
-            this.fresh_names = [];
-        }
         this.listing = web.dir.items;
         this.current_dir = web.path;
         this.breadcrumbs = web.path.split('/').map((path, index, arr) => {
@@ -1182,7 +1069,6 @@ export class PhirepassSftpClient {
         this.channel.on_connection_close(() => {
             this.connectionStateChanged.emit([ConnectionState.Disconnected]);
             this.status = 'Disconnected';
-            this.channel_ready = false;
         });
 
         this.channel.on_connection_error((err: Error) => {
@@ -1196,11 +1082,6 @@ export class PhirepassSftpClient {
 
         this.channel.on_protocol_message((msg: ProtocolMessage) => {
             const { web } = msg.data;
-            // The downloader shares this channel: hand it what it asked for.
-            if (isDownloadFrame(web as { type: string }) || (web.type === ProtocolMessageType.Error && (web.msg_id ?? 0) >= DOWNLOADER_MSG_ID_BASE)) {
-                void this.downloaderEl?.receive(msg);
-                return;
-            }
             switch (web.type) {
                 case ProtocolMessageType.Error:
                     this.handle_error(web);
@@ -1332,10 +1213,6 @@ export class PhirepassSftpClient {
         this.filter = '';
         this.version = '';
         this.status = 'Disconnected';
-        this.channel_ready = false;
-        this.part_delete = null;
-        this.torrent_menu = null;
-        this.listing_player = null;
     }
 
     private on_file_row_action(item: SFTPListItem, event: MouseEvent) {
@@ -1353,23 +1230,6 @@ export class PhirepassSftpClient {
         event.stopPropagation();
         this.selected_item = item;
 
-        // A plain SFTP delete of a running download's part file would only
-        // make the job retry: ask the downloader to delete the download.
-        if (item.kind === 'File' && isPartFile(item.name) && this.downloaderEl) {
-            const downloader = this.downloaderEl;
-            void downloader.jobForPath(this.item_path(item)).then((job) => {
-                if (job) {
-                    this.part_delete = { download_id: job.download_id, name: item.name, busy: false };
-                } else {
-                    this.open_delete_prompt(item);
-                }
-            });
-            return;
-        }
-        this.open_delete_prompt(item);
-    }
-
-    private open_delete_prompt(item: SFTPListItem) {
         this.delete_file_name = item.name;
         this.delete_is_dir = item.kind === 'Folder';
         this.delete_recursive = false;
@@ -2053,7 +1913,6 @@ export class PhirepassSftpClient {
                                         <line x1="9" x2="15" y1="13" y2="13"></line>
                                     </svg>
                                 </button>
-                                {this.fetch_enabled() && <FetchButton count={this.fetch_count} onClick={() => void this.downloaderEl?.openFetch(this.current_dir)} />}
                                 <button type="button" class="action" onClick={() => this.open_upload_picker()} title="Upload" aria-label="Upload">
                                     <img src={upload} alt="Upload" />
                                 </button>
@@ -2088,9 +1947,7 @@ export class PhirepassSftpClient {
                                     {this.visible_listing().map((item, index) => (
                                         <tr key={index} class={{
                                             'selected': this.is_selected(item),
-                                            'part': item.kind === 'File' && isPartFile(item.name),
-                                            'fresh': item.kind === 'File' && this.fresh_names.includes(item.name),
-                                        }} onClick={() => this.list_directory(item)} onContextMenu={(event) => void this.on_row_context_menu(item, event)}>
+                                        }} onClick={() => this.list_directory(item)}>
                                             <td>
                                                 {item.kind === 'Folder' ? <img class="kind" src={folder} alt="Folder" /> : <img class="kind" src={file} alt="File" />}
                                                 <span class={`name ${item.kind.toLowerCase()}`}>{item.name}</span>
@@ -2101,19 +1958,6 @@ export class PhirepassSftpClient {
                                             <td>{new Date(item.attributes.modified * 1000).toLocaleString()}</td>
                                             <td class="action-col">
                                                 <div class="file-actions">
-                                                    {item.kind === 'File' && isPlayableFile(item.name) && this.listing_can_play() &&
-                                                        <button
-                                                            type="button"
-                                                            class="file-action"
-                                                            onClick={(event) => void this.play_listing_file(item, event)}
-                                                            title="Play"
-                                                            aria-label={`Play ${item.name}`}
-                                                        >
-                                                            <svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="currentColor" aria-hidden="true">
-                                                                <path d="M7 5v14l12-7z"></path>
-                                                            </svg>
-                                                        </button>
-                                                    }
                                                     {item.kind === 'File' &&
                                                         <button
                                                             type="button"
@@ -2197,21 +2041,6 @@ export class PhirepassSftpClient {
                         {this.show_loader && <div class="loader">Loading...</div>}
                         {this.show_error && <div class="error">{this.error_message}</div>}
                     </main>
-                    {this.fetch_enabled() &&
-                        <phirepass-downloader
-                            ref={(el) => this.downloaderEl = el as HTMLPhirepassDownloaderElement}
-                            compact
-                            channel={this.channel as any}
-                            connected={this.channel_ready}
-                            nodeId={this.nodeId}
-                            browsingService={this.serviceId}
-                            browsingPath={this.current_dir}
-                            streamBase={this.stream_base()}
-                            onPhirepassActiveCount={(event) => this.fetch_count = event.detail.n}
-                            onPhirepassFetchCompleted={(event) => this.on_fetch_completed(event.detail)}
-                            onPhirepassShowInFolder={(event) => this.on_show_in_folder(event.detail)}
-                        ></phirepass-downloader>
-                    }
                     <footer>
                         <section class="status">
                             {this.status}
@@ -2554,58 +2383,6 @@ export class PhirepassSftpClient {
                                 </button>
                             </div>
                         </div>
-                    </section>
-                }
-                {this.part_delete &&
-                    <PartDeleteDialog
-                        name={this.part_delete.name}
-                        busy={this.part_delete.busy}
-                        onCancel={() => this.part_delete = null}
-                        onConfirm={() => {
-                            const target = this.part_delete!;
-                            this.part_delete = { ...target, busy: true };
-                            void this.downloaderEl?.deleteDownload(target.download_id).finally(() => {
-                                this.part_delete = null;
-                                this.refresh_directory();
-                            });
-                        }}
-                    />
-                }
-                {this.torrent_menu &&
-                    <TorrentContextMenu
-                        menu={this.torrent_menu}
-                        onClose={() => this.torrent_menu = null}
-                        onFetch={() => {
-                            const path = this.torrent_menu!.path;
-                            this.torrent_menu = null;
-                            void this.downloaderEl?.startTorrentPath(path);
-                        }}
-                        onDownload={() => {
-                            const item = this.selected_item;
-                            this.torrent_menu = null;
-                            if (item) void this.start_download(item);
-                        }}
-                        onRename={() => {
-                            const item = this.selected_item;
-                            this.torrent_menu = null;
-                            if (item) this.on_rename_action(item, new window.Event('click'));
-                        }}
-                        onDelete={() => {
-                            const item = this.selected_item;
-                            this.torrent_menu = null;
-                            if (item) this.on_file_delete_action(item, new window.Event('click'));
-                        }}
-                    />
-                }
-                {this.listing_player &&
-                    <section class="player-modal visible">
-                        <phirepass-media-player
-                            src={this.listing_player.src}
-                            name={this.listing_player.name}
-                            status="On the node"
-                            positionKey={this.listing_player.key}
-                            onPhirepassPlayerClose={() => this.listing_player = null}
-                        ></phirepass-media-player>
                     </section>
                 }
             </Host>
