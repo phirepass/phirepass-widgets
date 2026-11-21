@@ -137,6 +137,8 @@ export class PhirepassTerminal {
 
         // Colors
         theme: {
+            // Also the `#ccc` background in phirepass-terminal.css, which
+            // paints the partial row the fit leaves unused; change both.
             background: "#0b1021",
             foreground: "#e2e8f0",
             cursor: "#67e8f9",

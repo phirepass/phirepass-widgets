@@ -20,6 +20,13 @@
     min-width: 0;
     min-height: 0;
     overflow: hidden;
+
+    /* xterm's theme background (`theme.background` in phirepass-terminal.tsx;
+       keep the two in step). The fit only uses whole rows, so up to one row of
+       height is always left over below the last one. xterm does not paint that
+       strip, so without this the embedder's background shows through as a band
+       under the session, and the terminal looks shorter than its panel. */
+    background: #0b1021;
 }
 
 /*

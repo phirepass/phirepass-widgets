@@ -34,8 +34,8 @@
         "LICENSE"
     ],
     "scripts": {
-        "build": "stencil build",
-        "build:prod": "stencil build --prod",
+        "build": "stencil build && node scripts/strip-turbopack-ignore.mjs",
+        "build:prod": "stencil build --prod && node scripts/strip-turbopack-ignore.mjs",
         "start": "stencil build --dev --watch --serve",
         "test": "vitest run --config vitest.config.mts",
         "test.watch": "vitest --config vitest.config.mts",
